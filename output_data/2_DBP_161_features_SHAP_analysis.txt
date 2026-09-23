@@ -1,0 +1,593 @@
+=================================================================================================================================================
+5-FOLD SUBJECT-LEVEL SHAP ANALYSIS FOR ΔDBP
+=================================================================================================================================================
+PART A = Model Performance; PART B = SHAP Feature Importance.
+
+REPRODUCIBILITY SETTINGS
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Random state = 42
+Random Forest trees = 200
+Random Forest n_jobs = 1
+5-fold KFold: shuffle=True with fixed random_state.
+PYTHONHASHSEED = 42.
+
+DATASET
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Valid subjects = 70
+Total delta samples = 280 (4 per subject)
+Total model features = 161 (156 delta morphology + 5 demographics)
+Excluded subjects = yy04_subject_000, yy04_subject_001, yy04_subject_002, yy04_subject_003, yy04_subject_004
+X shape = (280, 161)
+y shape = (280,)
+
+FEATURE CONSTRUCTION
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Morphological features: 1-156 are calculated as rows 1-4 minus baseline row 0 for each subject.
+Demographics are subject-level baseline values repeated four times and horizontally concatenated with the four delta samples.
+Demographic feature order: s1=Gender, s2=Age, s3=Height, s4=Weight, s5=BMI.
+Demographic category: Demographics.
+
+CSV / FEATURE-DEFINITION VALIDATION
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Verified CSV layout from all_trimmed.csv:
+  Height = column 6; Weight = column 7; BMI = column 8; Gender = column 9; Age = column 10.
+  Morphological feature 1-156 = columns 11-166.
+Excel definition format = 156 x 2 (index + feature name)
+  Feature names are mapped in Excel row order to morphological features 1-156.
+First checked subject = yy04_subject_005
+Total CSV columns = 166
+Demographic header check = True
+Morphological index header check = True
+Morphological Excel-name header check = False
+All checked CSVs have consistent header validation = True
+
+FULL FEATURE MAPPING
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Feature   Feature Name                  Category              
+--------------------------------------------------------------
+1         Tm_Oa                         Time                  
+2         Tm_Ow                         Time                  
+3         Tm_Ob                         Time                  
+4         Tm_OS                         Time                  
+5         Tm_Oc                         Time                  
+6         Tm_Oy                         Time                  
+7         Tm_ON                         Time                  
+8         Tm_OD                         Time                  
+9         Tss                           Time                  
+10        Tm_Sc                         Time                  
+11        Tm_Sd                         Time                  
+12        Tm_Se                         Time                  
+13        Tm_SD                         Time                  
+14        Tm_ND                         Time                  
+15        Tm_bb2                        Time                  
+16        Tm_bc                         Time                  
+17        Tm_bd                         Time                  
+18        Tm_wb                         Time                  
+19        Tm_wS                         Time                  
+20        Tm_wc                         Time                  
+21        Tm_wd                         Time                  
+22        Tm_wz                         Time                  
+23        Tm_ac                         Time                  
+24        Tm_SO2                        Time                  
+25        AMS                           Amplitude             
+26        Am_Oa                         Amplitude             
+27        Am_Ow                         Amplitude             
+28        Am_Ob                         Amplitude             
+29        Am_Oc                         Amplitude             
+30        Am_Oy                         Amplitude             
+31        Am_OO2                        Amplitude             
+32        Am_OD                         Amplitude             
+33        Am_ON                         Amplitude             
+34        Am_NS                         Amplitude             
+35        DID                           Amplitude             
+36        AI_ON_AMS                     Amplitude             
+37        AI_OD_AMS                     Amplitude             
+38        AI_NS_AMS                     Amplitude             
+39        AI_DS_AMS                     Amplitude             
+40        w                             VPG_APG               
+41        y                             VPG_APG               
+42        z                             VPG_APG               
+43        a                             VPG_APG               
+44        b                             VPG_APG               
+45        c                             VPG_APG               
+46        d                             VPG_APG               
+47        e                             VPG_APG               
+48        cc                            VPG_APG               
+49        dd                            VPG_APG               
+50        r_z_w                         VPG_APG_Ratio         
+51        r_y_w                         VPG_APG_Ratio         
+52        r_cc_w                        VPG_APG_Ratio         
+53        r_dd_w                        VPG_APG_Ratio         
+54        r_b_a                         VPG_APG_Ratio         
+55        r_c_a                         VPG_APG_Ratio         
+56        r_d_a                         VPG_APG_Ratio         
+57        r_e_a                         VPG_APG_Ratio         
+58        r_bcde_a                      VPG_APG_Ratio         
+59        r_bcd_a                       VPG_APG_Ratio         
+60        r_bde_a                       VPG_APG_Ratio         
+61        r_be_a                        VPG_APG_Ratio         
+62        r_cdb_a                       VPG_APG_Ratio         
+63        S_OO                          Area                  
+64        S_OS                          Area                  
+65        S_Oc                          Area                  
+66        S_ON                          Area                  
+67        S_OD                          Area                  
+68        S_SN                          Area                  
+69        S_SD                          Area                  
+70        S_SO2                         Area                  
+71        S_NO2                         Area                  
+72        power_OS_ppg                  Power                 
+73        power_wS_ppg                  Power                 
+74        power_Sc_ppg                  Power                 
+75        power_Sd_ppg                  Power                 
+76        power_OS_vpg                  Power                 
+77        power_wS_vpg                  Power                 
+78        power_Sc_vpg                  Power                 
+79        power_Sd_vpg                  Power                 
+80        power_OS_apg                  Power                 
+81        power_wS_apg                  Power                 
+82        power_Sc_apg                  Power                 
+83        power_Sd_apg                  Power                 
+84        power_OO_ppg                  Power                 
+85        power_OO_vpg                  Power                 
+86        power_OO_apg                  Power                 
+87        r_Tm_Oa_Tss                   Ratio                 
+88        r_Tm_Ow_Tss                   Ratio                 
+89        r_Tm_Ob_Tss                   Ratio                 
+90        r_Tm_OS_Tss                   Ratio                 
+91        r_Tm_Oc_Tss                   Ratio                 
+92        r_Tm_Oy_Tss                   Ratio                 
+93        r_Tm_ON_Tss                   Ratio                 
+94        r_Tm_wz_Tss                   Ratio                 
+95        r_Tm_SD_Tss                   Ratio                 
+96        r_Tm_bb2_Tss                  Ratio                 
+97        r_Oa_AMS                      Ratio                 
+98        r_Ow_AMS                      Ratio                 
+99        r_Ob_AMS                      Ratio                 
+100       r_Oc_AMS                      Ratio                 
+101       r_Oy_AMS                      Ratio                 
+102       r_OO2_AMS                     Ratio                 
+103       IPA                           Ratio                 
+104       PIR                           Ratio                 
+105       r_SOS_SOO                     Ratio                 
+106       r_SOc_SOO                     Ratio                 
+107       r_SON_SOO                     Ratio                 
+108       r_OS_OO_ppg                   Ratio                 
+109       r_wS_OO_ppg                   Ratio                 
+110       r_Sc_OO_ppg                   Ratio                 
+111       r_Sd_OO_ppg                   Ratio                 
+112       r_OS_OO_vpg                   Ratio                 
+113       r_wS_OO_vpg                   Ratio                 
+114       r_Sc_OO_vpg                   Ratio                 
+115       r_Sd_OO_vpg                   Ratio                 
+116       r_OS_OO_apg                   Ratio                 
+117       r_wS_OO_apg                   Ratio                 
+118       r_Sc_OO_apg                   Ratio                 
+119       r_Sd_OO_apg                   Ratio                 
+120       m_Sc_ppg                      Slope                 
+121       m_Sd_ppg                      Slope                 
+122       m_bS_ppg                      Slope                 
+123       m_bc_ppg                      Slope                 
+124       m_bd_ppg                      Slope                 
+125       m_wS_ppg                      Slope                 
+126       m_OS_ppg                      Slope                 
+127       m_ab_ppg                      Slope                 
+128       m_ab_apg                      Slope                 
+129       m_bS_apg                      Slope                 
+130       m_bc_apg                      Slope                 
+131       m_bd_apg                      Slope                 
+132       m_be_apg                      Slope                 
+133       m_Sc_apg                      Slope                 
+134       m_wS_apg                      Slope                 
+135       m_OS_apg                      Slope                 
+136       SW10                          Width                 
+137       SW20                          Width                 
+138       SW30                          Width                 
+139       SW40                          Width                 
+140       SW50                          Width                 
+141       SW60                          Width                 
+142       SW70                          Width                 
+143       SW80                          Width                 
+144       SW90                          Width                 
+145       DW10                          Width                 
+146       DW20                          Width                 
+147       DW30                          Width                 
+148       DW40                          Width                 
+149       DW50                          Width                 
+150       DW60                          Width                 
+151       DW70                          Width                 
+152       DW80                          Width                 
+153       DW90                          Width                 
+154       PI                            Perfusion             
+155       Skewness                      Contour               
+156       Kurtosis                      Contour               
+s1        Gender                        Demographics          
+s2        Age                           Demographics          
+s3        Height                        Demographics          
+s4        Weight                        Demographics          
+s5        BMI                           Demographics          
+
+=================================================================================================================================================
+PART A. MODEL PERFORMANCE
+=================================================================================================================================================
+Each fold: 56? training samples and the remaining subject-held-out samples.
+Random Forest is trained on 56 subjects and evaluated on 14 completely unseen subjects.
+The model predicts ΔDBP from the 161-dimensional feature vector.
+For MAP, MAP = 1/3*SBP + 2/3*DBP is calculated for each measurement before subtracting the baseline value.
+
+Fold   TrainSubj   TestSubj   TrainN   TestN    MAE         RMSE        R2          Pearson r     Spearman rho   Bias        
+-------------------------------------------------------------------------------------------------------------------------------------------------
+1      56          14         224      56       7.409018    9.648391    0.079593    0.302277      0.397134       0.906696    
+2      56          14         224      56       5.513393    7.269105    0.257374    0.519155      0.525713       -0.903036   
+3      56          14         224      56       5.821429    7.077485    0.297675    0.555645      0.517303       -0.532500   
+4      56          14         224      56       6.783661    8.844730    -0.030941   0.279314      0.298288       1.756161    
+5      56          14         224      56       6.596607    8.302504    0.114956    0.370484      0.316392       -0.141429   
+
+5-fold summary (Mean ± SD):
+  MAE          = 6.424821 ± 0.761857
+  RMSE         = 8.228443 ± 1.077797
+  R2           = 0.143731 ± 0.134225
+  Pearson r    = 0.405375 ± 0.125763
+  Spearman rho = 0.410966 ± 0.107594
+  Bias         = 0.217179 ± 1.094235
+
+5-fold summary (Median [IQR]):
+  MAE          = 6.596607 [0.962232]
+  RMSE         = 8.302504 [1.575625]
+  R2           = 0.114956 [0.177781]
+  Pearson r    = 0.370484 [0.216878]
+  Spearman rho = 0.397134 [0.200911]
+
+Overall OOF prediction performance:
+  OOF MAE          = 6.424821
+  OOF RMSE         = 8.284720
+  OOF R2           = 0.140426
+  OOF Pearson r    = 0.386871
+  OOF Spearman rho = 0.388836
+  OOF Bias         = 0.217179
+
+=================================================================================================================================================
+PART B. SHAP FEATURE IMPORTANCE
+=================================================================================================================================================
+TreeSHAP is calculated on the TRAINING samples of each fold.
+The test set is used for model-performance evaluation and is not used to calculate the main SHAP feature-importance ranking.
+For each fold: feature importance = mean absolute SHAP over the training samples.
+Final feature contribution = arithmetic mean of the five fold-specific mean(|SHAP|) values.
+Feature ranks are calculated within each fold and normalized from 1 (highest contribution) to 0 (lowest contribution).
+
+Rank   Feat      Feature Name                  Category            Mean|SHAP|     SD|SHAP|      Mean signed    Mean RankCoeff  Median Rank  F1    F2    F3    F4    F5    
+-------------------------------------------------------------------------------------------------------------------------------------------------
+1      18        Tm_wb                         Time                0.984913       0.533343      -0.129661      0.995000        1.00         1     1     4     2     1     
+2      155       Skewness                      Contour             0.643499       0.648739      -0.102671      0.972500        4.00         16    5     1     1     4     
+3      156       Kurtosis                      Contour             0.310702       0.119761      -0.039627      0.966250        5.00         5     3     6     13    5     
+4      103       IPA                           Ratio               0.292793       0.283703      -0.026285      0.818750        5.00         3     66    2     5     74    
+5      s3        Height                        Demographics        0.249094       0.161215      0.001010       0.913750        7.00         11    7     3     47    6     
+6      51        r_y_w                         VPG_APG_Ratio       0.230217       0.290342      -0.009337      0.802500        22.00        2     10    35    94    22    
+7      124       m_bd_ppg                      Slope               0.225273       0.169815      0.004002       0.922500        10.00        22    8     10    25    2     
+8      52        r_cc_w                        VPG_APG_Ratio       0.209672       0.131281      -0.005105      0.888750        7.00         7     6     5     53    23    
+9      108       r_OS_OO_ppg                   Ratio               0.185794       0.128831      0.002654       0.861250        7.00         6     4     7     75    24    
+10     26        Am_Oa                         Amplitude           0.171897       0.155387      0.007583       0.888750        14.00        14    25    12    3     40    
+11     54        r_b_a                         VPG_APG_Ratio       0.157304       0.040060      0.036178       0.933750        8.00         8     17    8     6     19    
+12     3         Tm_Ob                         Time                0.151393       0.152800      -0.025917      0.828750        31.00        49    50    31    9     3     
+13     94        r_Tm_wz_Tss                   Ratio               0.150847       0.076565      -0.019978      0.790000        11.00        134   11    13    7     8     
+14     58        r_bcde_a                      VPG_APG_Ratio       0.144955       0.177258      0.005028       0.803750        40.00        4     40    26    48    44    
+15     97        r_Oa_AMS                      Ratio               0.136630       0.103865      0.012318       0.882500        17.00        15    31    32    4     17    
+16     119       r_Sd_OO_apg                   Ratio               0.136525       0.157162      0.013654       0.805000        28.00        28    2     21    60    50    
+17     80        power_OS_apg                  Power               0.120616       0.078078      -0.000887      0.838750        33.00        46    9     33    37    9     
+18     117       r_wS_OO_apg                   Ratio               0.114630       0.047226      -0.006021      0.886250        20.00        21    20    9     15    31    
+19     55        r_c_a                         VPG_APG_Ratio       0.090587       0.035693      0.003422       0.822500        19.00        70    30    19    14    14    
+20     34        Am_NS                         Amplitude           0.090254       0.045174      -0.000802      0.768750        20.00        10    18    20    58    84    
+21     45        c                             VPG_APG             0.087932       0.045003      0.000095       0.781250        26.00        93    27    14    20    26    
+22     123       m_bc_ppg                      Slope               0.086426       0.035507      0.008943       0.821250        33.00        24    33    40    40    11    
+23     56        r_d_a                         VPG_APG_Ratio       0.086354       0.054366      0.004616       0.731250        29.00        29    13    58    107   13    
+24     154       PI                            Perfusion           0.085085       0.048398      -0.000505      0.760000        36.00        36    46    16    10    89    
+25     111       r_Sd_OO_ppg                   Ratio               0.084283       0.043357      -0.016868      0.775000        28.00        9     68    18    28    62    
+26     60        r_bde_a                       VPG_APG_Ratio       0.083240       0.052156      0.030902       0.727500        39.00        12    104   15    39    53    
+27     s2        Age                           Demographics        0.079642       0.023705      0.003783       0.810000        34.00        13    39    34    51    20    
+28     50        r_z_w                         VPG_APG_Ratio       0.074815       0.042444      -0.003122      0.737500        42.00        53    14    38    42    68    
+29     53        r_dd_w                        VPG_APG_Ratio       0.074558       0.056923      0.001219       0.641250        28.00        85    26    11    142   28    
+30     42        z                             VPG_APG             0.072852       0.049742      -0.008149      0.697500        57.00        23    12    87    68    57    
+31     136       SW10                          Width               0.072065       0.036996      -0.000606      0.705000        23.00        59    121   17    23    21    
+32     144       SW90                          Width               0.071315       0.039179      0.006399       0.702500        56.00        79    78    56    12    18    
+33     59        r_bcd_a                       VPG_APG_Ratio       0.070257       0.049860      0.006947       0.642500        29.00        26    15    29    74    147   
+34     151       DW70                          Width               0.070108       0.029258      0.004184       0.742500        44.00        67    22    23    44    55    
+35     89        r_Tm_Ob_Tss                   Ratio               0.069246       0.023087      0.015063       0.745000        48.00        18    71    53    19    48    
+36     116       r_OS_OO_apg                   Ratio               0.068326       0.054306      0.001485       0.648750        69.00        69    74    92    8     43    
+37     64        S_OS                          Area                0.064356       0.036552      0.005033       0.668750        55.00        55    70    109   21    15    
+38     122       m_bS_ppg                      Slope               0.064160       0.017168      -0.003385      0.738750        39.00        32    23    71    49    39    
+39     102       r_OO2_AMS                     Ratio               0.064135       0.009427      0.003222       0.756250        42.00        47    44    36    31    42    
+40     115       r_Sd_OO_vpg                   Ratio               0.063996       0.045396      0.005649       0.606250        54.00        133   16    93    24    54    
+41     87        r_Tm_Oa_Tss                   Ratio               0.063289       0.049809      0.019204       0.582500        44.00        44    154   44    11    86    
+42     139       SW40                          Width               0.062962       0.059846      0.004347       0.568750        76.00        91    117   76    56    10    
+43     65        S_Oc                          Area                0.062871       0.029448      -0.004783      0.681250        39.00        86    93    39    17    25    
+44     24        Tm_SO2                        Time                0.061931       0.078081      0.016893       0.468750        95.00        84    139   95    105   7     
+45     1         Tm_Oa                         Time                0.061319       0.022504      0.011377       0.702500        50.00        77    41    50    16    59    
+46     57        r_e_a                         VPG_APG_Ratio       0.060894       0.014189      0.001120       0.725000        47.00        62    47    57    27    32    
+47     46        d                             VPG_APG             0.059241       0.022664      0.002557       0.677500        62.00        19    75    69    62    38    
+48     99        r_Ob_AMS                      Ratio               0.058009       0.011846      -0.000587      0.697500        47.00        33    64    47    33    70    
+49     114       r_Sc_OO_vpg                   Ratio               0.057669       0.027982      0.002448       0.647500        48.00        17    69    48    108   45    
+50     121       m_Sd_ppg                      Slope               0.056353       0.037009      -0.003418      0.592500        50.00        50    21    101   118   41    
+51     118       r_Sc_OO_apg                   Ratio               0.055445       0.009621      0.002963       0.685000        54.00        63    56    54    35    49    
+52     70        S_SO2                         Area                0.055259       0.028355      -0.004123      0.613750        50.00        139   29    27    50    69    
+53     62        r_cdb_a                       VPG_APG_Ratio       0.055170       0.049001      -0.002878      0.483750        102.00       20    19    119   102   158   
+54     98        r_Ow_AMS                      Ratio               0.054600       0.020286      -0.001058      0.655000        46.00        76    28    98    46    33    
+55     141       SW60                          Width               0.054501       0.020480      0.001689       0.646250        66.00        68    32    66    26    96    
+56     47        e                             VPG_APG             0.054287       0.014913      0.001291       0.666250        45.00        73    76    42    45    36    
+57     71        S_NO2                         Area                0.053824       0.007761      -0.007704      0.682500        57.00        38    38    59    57    67    
+58     14        Tm_ND                         Time                0.053557       0.012023      -0.000324      0.677500        55.00        43    55    80    55    30    
+59     126       m_OS_ppg                      Slope               0.052556       0.022992      0.000127       0.626250        77.00        80    42    24    77    81    
+60     11        Tm_Sd                         Time                0.051468       0.026280      0.005950       0.605000        82.00        27    82    25    99    88    
+61     147       DW30                          Width               0.051073       0.021501      0.023604       0.603750        42.00        42    137   75    34    34    
+62     4         Tm_OS                         Time                0.050839       0.053986      -0.005679      0.453750        98.00        95    98    112   125   12    
+63     104       PIR                           Ratio               0.050700       0.006089      0.005364       0.661250        60.00        48    67    60    41    60    
+64     s5        BMI                           Demographics        0.050483       0.020294      0.000669       0.620000        64.00        97    65    64    22    61    
+65     100       r_Oc_AMS                      Ratio               0.050291       0.016849      0.002013       0.628750        51.00        54    51    51    109   37    
+66     101       r_Oy_AMS                      Ratio               0.049379       0.009026      0.005631       0.632500        59.00        34    80    55    59    71    
+67     148       DW40                          Width               0.048771       0.024372      0.001397       0.567500        43.00        31    126   122   43    29    
+68     153       DW90                          Width               0.048264       0.013034      0.015560       0.613750        62.00        30    62    68    54    100   
+69     61        r_be_a                        VPG_APG_Ratio       0.047556       0.019629      0.017699       0.583750        70.00        51    116   74    70    27    
+70     21        Tm_wd                         Time                0.045021       0.027042      0.003478       0.522500        97.00        25    97    37    104   124   
+71     96        r_Tm_bb2_Tss                  Ratio               0.044917       0.004349      0.001905       0.595000        66.00        57    52    81    66    73    
+72     31        Am_OO2                        Amplitude           0.044339       0.010222      -0.000313      0.581250        72.00        71    86    73    38    72    
+73     91        r_Tm_Oc_Tss                   Ratio               0.043544       0.042581      0.017680       0.416250        115.00       65    123   153   115   16    
+74     137       SW20                          Width               0.043249       0.022222      0.002697       0.537500        86.00        104   90    30    86    65    
+75     113       r_wS_OO_vpg                   Ratio               0.043210       0.009231      0.007456       0.565000        73.00        41    73    65    82    92    
+76     106       r_SOc_SOO                     Ratio               0.042349       0.020017      0.007910       0.512500        63.00        52    132   41    63    107   
+77     82        power_Sc_apg                  Power               0.042091       0.016461      0.006871       0.536250        83.00        83    36    108   91    58    
+78     149       DW50                          Width               0.041506       0.023311      -0.002898      0.486250        90.00        99    34    52    90    141   
+79     93        r_Tm_ON_Tss                   Ratio               0.041365       0.010591      0.003936       0.543750        77.00        40    83    77    67    103   
+80     105       r_SOS_SOO                     Ratio               0.040921       0.027454      0.009037       0.473750        98.00        66    24    102   98    136   
+81     129       m_bS_apg                      Slope               0.040758       0.026710      0.001126       0.463750        114.00       119   114   28    122   51    
+82     86        power_OO_apg                  Power               0.039951       0.010625      0.003567       0.527500        85.00        39    95    79    85    85    
+83     83        power_Sd_apg                  Power               0.039221       0.029465      0.005757       0.430000        88.00        145   124   22    88    82    
+84     s4        Weight                        Demographics        0.038618       0.010151      0.005645       0.505000        77.00        60    54    117   93    77    
+85     9         Tss                           Time                0.038466       0.018696      0.005978       0.460000        83.00        113   59    49    133   83    
+86     12        Tm_Se                         Time                0.038463       0.004846      0.002267       0.521250        81.00        58    81    86    87    76    
+87     32        Am_OD                         Amplitude           0.037606       0.016269      -0.004874      0.470000        89.00        115   37    89    78    110   
+88     152       DW80                          Width               0.037553       0.012257      0.003124       0.496250        72.00        81    63    62    72    130   
+89     41        y                             VPG_APG             0.037059       0.019207      -0.003727      0.452500        85.00        147   43    85    52    116   
+90     95        r_Tm_SD_Tss                   Ratio               0.036978       0.003695      0.006781       0.498750        79.00        75    91    90    71    79    
+91     112       r_OS_OO_vpg                   Ratio               0.036876       0.012034      -0.001614      0.472500        69.00        117   111   67    69    63    
+92     90        r_Tm_OS_Tss                   Ratio               0.036821       0.025407      0.005012       0.410000        123.00       37    147   123   135   35    
+93     146       DW20                          Width               0.036763       0.017134      0.009872       0.476250        96.00        35    96    63    101   129   
+94     76        power_OS_vpg                  Power               0.036586       0.027675      0.002107       0.396250        126.00       156   45    126   30    131   
+95     39        AI_DS_AMS                     Amplitude           0.036509       0.032115      0.002402       0.370000        114.00       114   119   103   18    155   
+96     17        Tm_bd                         Time                0.034912       0.014068      0.001080       0.437500        88.00        88    118   70    123   56    
+97     88        r_Tm_Ow_Tss                   Ratio               0.034785       0.020197      0.000833       0.421250        115.00       56    115   139   36    122   
+98     138       SW30                          Width               0.034732       0.008747      0.001773       0.460000        90.00        90    99    61    83    104   
+99     27        Am_Ow                         Amplitude           0.034611       0.024477      0.000800       0.395000        103.00       87    103   110   29    160   
+100    33        Am_ON                         Amplitude           0.034115       0.006524      -0.004821      0.457500        92.00        61    92    105   73    108   
+101    23        Tm_ac                         Time                0.033821       0.009383      -0.004959      0.447500        92.00        72    61    124   92    98    
+102    109       r_wS_OO_ppg                   Ratio               0.033005       0.021937      -0.001444      0.376250        121.00       130   35    121   76    142   
+103    133       m_Sc_apg                      Slope               0.032623       0.021530      0.005897       0.375000        103.00       103   153   43    95    111   
+104    142       SW70                          Width               0.032423       0.006246      0.001864       0.430000        87.00        94    87    83    79    118   
+105    135       m_OS_apg                      Slope               0.032306       0.008542      -0.000425      0.416250        99.00        116   79    78    100   99    
+106    29        Am_Oc                         Amplitude           0.032091       0.023271      0.000812       0.350000        118.00       118   77    46    151   133   
+107    145       DW10                          Width               0.031287       0.011487      0.002365       0.386250        90.00        64    131   82    129   90    
+108    25        AMS                           Amplitude           0.031095       0.022827      -0.002738      0.342500        139.00       149   53    143   139   47    
+109    8         Tm_OD                         Time                0.031055       0.013521      -0.003633      0.385000        111.00       45    125   111   84    132   
+110    81        power_wS_apg                  Power               0.030837       0.010849      -0.001447      0.390000        107.00       109   58    107   113   106   
+111    13        Tm_SD                         Time                0.030698       0.010474      -0.002535      0.382500        91.00        98    72    91    147   91    
+112    7         Tm_ON                         Time                0.030482       0.006709      -0.001953      0.401250        100.00       101   89    100   114   80    
+113    37        AI_OD_AMS                     Amplitude           0.030413       0.011020      0.004628       0.390000        84.00        82    84    148   65    114   
+114    120       m_Sc_ppg                      Slope               0.030006       0.015602      0.001963       0.367500        95.00        89    48    155   124   95    
+115    140       SW50                          Width               0.029815       0.011962      0.006365       0.358750        121.00       121   128   130   64    75    
+116    110       r_Sc_OO_ppg                   Ratio               0.029653       0.003939      -0.000839      0.382500        101.00       100   112   106   80    101   
+117    15        Tm_bb2                        Time                0.029506       0.010273      0.002757       0.361250        112.00       112   122   99    117   66    
+118    150       DW60                          Width               0.029479       0.013367      0.001925       0.356250        96.00        123   57    96    96    148   
+119    130       m_bc_apg                      Slope               0.028896       0.008583      0.002758       0.358750        109.00       111   109   94    126   78    
+120    16        Tm_bc                         Time                0.028795       0.014341      -0.002012      0.337500        116.00       106   49    116   144   120   
+121    125       m_wS_ppg                      Slope               0.028608       0.025074      0.004340       0.282500        146.00       146   155   45    146   87    
+122    132       m_be_apg                      Slope               0.028487       0.008020      0.001506       0.357500        107.00       78    107   88    134   112   
+123    68        S_SN                          Area                0.027400       0.005198      -0.002822      0.360000        97.00        96    85    129   110   97    
+124    49        dd                            VPG_APG             0.026911       0.024567      0.000405       0.253750        140.00       138   141   140   32    151   
+125    69        S_SD                          Area                0.026708       0.014309      0.000885       0.311250        102.00       158   88    72    136   102   
+126    143       SW80                          Width               0.026572       0.011168      0.009318       0.302500        126.00       126   130   118   61    128   
+127    20        Tm_wc                         Time                0.025874       0.004319      -0.000880      0.310000        114.00       92    108   114   128   115   
+128    6         Tm_Oy                         Time                0.025411       0.006911      0.000142       0.291250        124.00       124   134   128   81    105   
+129    63        S_OO                          Area                0.024630       0.010955      -0.000436      0.277500        121.00       144   145   84    89    121   
+130    19        Tm_wS                         Time                0.023735       0.008074      0.002985       0.275000        125.00       74    143   131   112   125   
+131    30        Am_Oy                         Amplitude           0.023258       0.003581      0.001597       0.282500        111.00       110   101   134   111   123   
+132    73        power_wS_ppg                  Power               0.023187       0.020754      0.003817       0.225000        141.00       141   133   151   154   46    
+133    22        Tm_wz                         Time                0.023129       0.005780      0.000273       0.276250        109.00       102   100   141   132   109   
+134    10        Tm_Sc                         Time                0.022839       0.007574      0.001631       0.246250        127.00       108   135   127   145   93    
+135    5         Tm_Oc                         Time                0.022126       0.005977      -0.001030      0.242500        119.00       131   151   104   106   119   
+136    85        power_OO_vpg                  Power               0.021890       0.008297      -0.001041      0.240000        127.00       152   127   137   103   94    
+137    78        power_Sc_vpg                  Power               0.021860       0.014866      0.000888       0.217500        140.00       150   60    132   140   149   
+138    107       r_SON_SOO                     Ratio               0.021330       0.005068      -0.000711      0.241250        127.00       127   110   135   97    143   
+139    131       m_bd_apg                      Slope               0.021326       0.004756      0.001331       0.216250        127.00       120   129   113   143   127   
+140    2         Tm_Ow                         Time                0.021291       0.006813      0.000611       0.228750        131.00       140   94    144   131   113   
+141    128       m_ab_apg                      Slope               0.020326       0.008021      0.001216       0.197500        136.00       122   136   97    138   154   
+142    92        r_Tm_Oy_Tss                   Ratio               0.019596       0.003465      0.004646       0.202500        133.00       107   144   133   120   139   
+143    66        S_ON                          Area                0.019070       0.020291      0.002046       0.187500        156.00       129   157   161   156   52    
+144    77        power_wS_vpg                  Power               0.018601       0.004573      0.001875       0.181250        136.00       148   140   136   119   117   
+145    127       m_ab_ppg                      Slope               0.018464       0.004925      0.000699       0.180000        137.00       135   105   147   137   137   
+146    74        power_Sc_ppg                  Power               0.018201       0.016417      0.002105       0.157500        153.00       153   146   159   157   64    
+147    43        a                             VPG_APG             0.017869       0.003591      0.000882       0.171250        138.00       143   120   138   127   140   
+148    79        power_Sd_vpg                  Power               0.017479       0.008636      -0.000439      0.152500        144.00       159   113   115   152   144   
+149    84        power_OO_ppg                  Power               0.016901       0.005036      0.000572       0.142500        138.00       160   138   125   130   138   
+150    44        b                             VPG_APG             0.016680       0.006832      -0.001222      0.146250        151.00       151   106   157   121   153   
+151    28        Am_Ob                         Amplitude           0.016432       0.008591      0.000068       0.147500        142.00       125   102   142   159   159   
+152    67        S_OD                          Area                0.015443       0.006834      0.002167       0.123750        137.00       137   156   120   158   135   
+153    35        DID                           Amplitude           0.015431       0.007768      0.000992       0.130000        152.00       105   152   158   160   126   
+154    134       m_wS_apg                      Slope               0.015197       0.003936      0.001051       0.111250        148.00       154   148   152   116   146   
+155    48        cc                            VPG_APG             0.014897       0.004229      -0.000432      0.108750        142.00       128   142   146   141   161   
+156    38        AI_NS_AMS                     Amplitude           0.013431       0.003656      0.006111       0.081250        150.00       132   159   150   149   150   
+157    36        AI_ON_AMS                     Amplitude           0.012585       0.004459      0.001377       0.082500        149.00       142   161   149   153   134   
+158    72        power_OS_ppg                  Power               0.012237       0.002790      0.002594       0.067500        148.00       155   158   145   148   145   
+159    40        w                             VPG_APG             0.011800       0.002518      0.001443       0.046250        154.00       157   150   154   155   152   
+160    s1        Gender                        Demographics        0.010763       0.004091      0.000469       0.040000        156.00       161   149   156   150   157   
+161    75        power_Sd_ppg                  Power               0.009703       0.004575      -0.000134      0.040000        160.00       136   160   160   161   156   
+
+TOP 20 FEATURES BY 5-FOLD AVERAGED MEAN |SHAP|
+-------------------------------------------------------------------------------------------------------------------------------------------------
+ 1. Tm_wb (feature 18, Time): mean|SHAP|=0.984913, SD=0.533343, median rank coefficient=1.000000
+ 2. Skewness (feature 155, Contour): mean|SHAP|=0.643499, SD=0.648739, median rank coefficient=0.981250
+ 3. Kurtosis (feature 156, Contour): mean|SHAP|=0.310702, SD=0.119761, median rank coefficient=0.975000
+ 4. IPA (feature 103, Ratio): mean|SHAP|=0.292793, SD=0.283703, median rank coefficient=0.975000
+ 5. Height (feature s3, Demographics): mean|SHAP|=0.249094, SD=0.161215, median rank coefficient=0.962500
+ 6. r_y_w (feature 51, VPG_APG_Ratio): mean|SHAP|=0.230217, SD=0.290342, median rank coefficient=0.868750
+ 7. m_bd_ppg (feature 124, Slope): mean|SHAP|=0.225273, SD=0.169815, median rank coefficient=0.943750
+ 8. r_cc_w (feature 52, VPG_APG_Ratio): mean|SHAP|=0.209672, SD=0.131281, median rank coefficient=0.962500
+ 9. r_OS_OO_ppg (feature 108, Ratio): mean|SHAP|=0.185794, SD=0.128831, median rank coefficient=0.962500
+10. Am_Oa (feature 26, Amplitude): mean|SHAP|=0.171897, SD=0.155387, median rank coefficient=0.918750
+11. r_b_a (feature 54, VPG_APG_Ratio): mean|SHAP|=0.157304, SD=0.040060, median rank coefficient=0.956250
+12. Tm_Ob (feature 3, Time): mean|SHAP|=0.151393, SD=0.152800, median rank coefficient=0.812500
+13. r_Tm_wz_Tss (feature 94, Ratio): mean|SHAP|=0.150847, SD=0.076565, median rank coefficient=0.937500
+14. r_bcde_a (feature 58, VPG_APG_Ratio): mean|SHAP|=0.144955, SD=0.177258, median rank coefficient=0.756250
+15. r_Oa_AMS (feature 97, Ratio): mean|SHAP|=0.136630, SD=0.103865, median rank coefficient=0.900000
+16. r_Sd_OO_apg (feature 119, Ratio): mean|SHAP|=0.136525, SD=0.157162, median rank coefficient=0.831250
+17. power_OS_apg (feature 80, Power): mean|SHAP|=0.120616, SD=0.078078, median rank coefficient=0.800000
+18. r_wS_OO_apg (feature 117, Ratio): mean|SHAP|=0.114630, SD=0.047226, median rank coefficient=0.881250
+19. r_c_a (feature 55, VPG_APG_Ratio): mean|SHAP|=0.090587, SD=0.035693, median rank coefficient=0.887500
+20. Am_NS (feature 34, Amplitude): mean|SHAP|=0.090254, SD=0.045174, median rank coefficient=0.881250
+
+CATEGORY-WISE SHAP SUMMARY
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Category            Count   Avg Mean|SHAP|    Max Mean|SHAP|    Sum Mean|SHAP|    
+----------------------------------------------------------------------------------
+Contour             2       0.477101          0.643499          0.954202          
+VPG_APG_Ratio       13      0.106583          0.230217          1.385578          
+Demographics        5       0.085720          0.249094          0.428601          
+Perfusion           1       0.085085          0.085085          0.085085          
+Time                24      0.080043          0.984913          1.921043          
+Ratio               33      0.070059          0.292793          2.311935          
+Slope               16      0.048860          0.225273          0.781764          
+Width               18      0.045691          0.072065          0.822438          
+Amplitude           15      0.041604          0.171897          0.624067          
+VPG_APG             10      0.039953          0.087932          0.399529          
+Area                9       0.038840          0.064356          0.349561          
+Power               15      0.031291          0.120616          0.469362          
+
+FOLD-SPECIFIC SHAP TOP 20 RANKINGS
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Fold 1:
+Rank   Feat      Feature Name                  Mean|SHAP|     RankCoeff   
+1      18        Tm_wb                         1.161476       1.000000    
+2      51        r_y_w                         0.734560       0.993750    
+3      103       IPA                           0.633601       0.987500    
+4      58        r_bcde_a                      0.461243       0.981250    
+5      156       Kurtosis                      0.419474       0.975000    
+6      108       r_OS_OO_ppg                   0.246521       0.968750    
+7      52        r_cc_w                        0.245289       0.962500    
+8      54        r_b_a                         0.173987       0.956250    
+9      111       r_Sd_OO_ppg                   0.145023       0.950000    
+10     34        Am_NS                         0.137865       0.943750    
+11     s3        Height                        0.133462       0.937500    
+12     60        r_bde_a                       0.120118       0.931250    
+13     s2        Age                           0.107946       0.925000    
+14     26        Am_Oa                         0.107279       0.918750    
+15     97        r_Oa_AMS                      0.101170       0.912500    
+16     155       Skewness                      0.098664       0.906250    
+17     114       r_Sc_OO_vpg                   0.098441       0.900000    
+18     89        r_Tm_Ob_Tss                   0.096824       0.893750    
+19     46        d                             0.095659       0.887500    
+20     62        r_cdb_a                       0.091786       0.881250    
+
+Fold 2:
+Rank   Feat      Feature Name                  Mean|SHAP|     RankCoeff   
+1      18        Tm_wb                         0.686625       1.000000    
+2      119       r_Sd_OO_apg                   0.415530       0.993750    
+3      156       Kurtosis                      0.409746       0.987500    
+4      108       r_OS_OO_ppg                   0.358625       0.981250    
+5      155       Skewness                      0.352703       0.975000    
+6      52        r_cc_w                        0.330847       0.968750    
+7      s3        Height                        0.306026       0.962500    
+8      124       m_bd_ppg                      0.290932       0.956250    
+9      80        power_OS_apg                  0.217321       0.950000    
+10     51        r_y_w                         0.216499       0.943750    
+11     94        r_Tm_wz_Tss                   0.204937       0.937500    
+12     42        z                             0.156780       0.931250    
+13     56        r_d_a                         0.150051       0.925000    
+14     50        r_z_w                         0.148079       0.918750    
+15     59        r_bcd_a                       0.145206       0.912500    
+16     115       r_Sd_OO_vpg                   0.133896       0.906250    
+17     54        r_b_a                         0.132492       0.900000    
+18     34        Am_NS                         0.124373       0.893750    
+19     62        r_cdb_a                       0.122369       0.887500    
+20     117       r_wS_OO_apg                   0.119113       0.881250    
+
+Fold 3:
+Rank   Feat      Feature Name                  Mean|SHAP|     RankCoeff   
+1      155       Skewness                      0.717217       1.000000    
+2      103       IPA                           0.556559       0.993750    
+3      s3        Height                        0.468438       0.987500    
+4      18        Tm_wb                         0.395850       0.981250    
+5      52        r_cc_w                        0.328276       0.975000    
+6      156       Kurtosis                      0.298418       0.968750    
+7      108       r_OS_OO_ppg                   0.202947       0.962500    
+8      54        r_b_a                         0.197752       0.956250    
+9      117       r_wS_OO_apg                   0.193725       0.950000    
+10     124       m_bd_ppg                      0.182494       0.943750    
+11     53        r_dd_w                        0.161904       0.937500    
+12     26        Am_Oa                         0.158595       0.931250    
+13     94        r_Tm_wz_Tss                   0.157142       0.925000    
+14     45        c                             0.155690       0.918750    
+15     60        r_bde_a                       0.154281       0.912500    
+16     154       PI                            0.121278       0.906250    
+17     136       SW10                          0.110773       0.900000    
+18     111       r_Sd_OO_ppg                   0.110076       0.893750    
+19     55        r_c_a                         0.107301       0.887500    
+20     34        Am_NS                         0.103589       0.881250    
+
+Fold 4:
+Rank   Feat      Feature Name                  Mean|SHAP|     RankCoeff   
+1      155       Skewness                      1.733804       1.000000    
+2      18        Tm_wb                         0.883103       0.993750    
+3      26        Am_Oa                         0.442782       0.987500    
+4      97        r_Oa_AMS                      0.320354       0.981250    
+5      103       IPA                           0.189212       0.975000    
+6      54        r_b_a                         0.182173       0.968750    
+7      94        r_Tm_wz_Tss                   0.179360       0.962500    
+8      116       r_OS_OO_apg                   0.163707       0.956250    
+9      3         Tm_Ob                         0.161481       0.950000    
+10     154       PI                            0.150239       0.943750    
+11     87        r_Tm_Oa_Tss                   0.143567       0.937500    
+12     144       SW90                          0.123708       0.931250    
+13     156       Kurtosis                      0.122210       0.925000    
+14     55        r_c_a                         0.098296       0.918750    
+15     117       r_wS_OO_apg                   0.097260       0.912500    
+16     1         Tm_Oa                         0.096387       0.906250    
+17     65        S_Oc                          0.094595       0.900000    
+18     39        AI_DS_AMS                     0.092661       0.893750    
+19     89        r_Tm_Ob_Tss                   0.089385       0.887500    
+20     45        c                             0.088671       0.881250    
+
+Fold 5:
+Rank   Feat      Feature Name                  Mean|SHAP|     RankCoeff   
+1      18        Tm_wb                         1.797508       1.000000    
+2      124       m_bd_ppg                      0.487230       0.993750    
+3      3         Tm_Ob                         0.412665       0.987500    
+4      155       Skewness                      0.315109       0.981250    
+5      156       Kurtosis                      0.303662       0.975000    
+6      s3        Height                        0.283523       0.968750    
+7      24        Tm_SO2                        0.201103       0.962500    
+8      94        r_Tm_wz_Tss                   0.195052       0.956250    
+9      80        power_OS_apg                  0.192793       0.950000    
+10     139       SW40                          0.168608       0.943750    
+11     123       m_bc_ppg                      0.148775       0.937500    
+12     4         Tm_OS                         0.147148       0.931250    
+13     56        r_d_a                         0.136039       0.925000    
+14     55        r_c_a                         0.133923       0.918750    
+15     64        S_OS                          0.118455       0.912500    
+16     91        r_Tm_Oc_Tss                   0.117312       0.906250    
+17     97        r_Oa_AMS                      0.110329       0.900000    
+18     144       SW90                          0.101432       0.893750    
+19     54        r_b_a                         0.100114       0.887500    
+20     s2        Age                           0.098726       0.881250    
+
+=================================================================================================================================================
+METHOD SUMMARY
+=================================================================================================================================================
+1) 70 subjects are divided into 5 subject-level folds using a fixed random seed.
+2) For every subject, four delta morphological samples are generated from rows 1-4 minus baseline row 0.
+3) Five subject-level demographic variables are taken from the baseline row, ordered as s1=Gender, s2=Age, s3=Height, s4=Weight, s5=BMI, and repeated four times.
+4) The 156 delta morphological features and the five repeated demographic features are horizontally concatenated into a 161-dimensional input vector.
+5) Each fold trains Random Forest on 56 subjects and evaluates prediction performance on 14 completely unseen subjects.
+6) SHAP feature importance is calculated on the 56-subject training data using TreeSHAP.
+7) Final contribution is the mean of the five fold-wise mean(|SHAP|) values.
+8) For MAP, MAP = 1/3*SBP + 2/3*DBP is calculated row-wise first, and then ΔMAP = MAP[1:5] - MAP[0].
+9) Subject-level separation is preserved so that all four samples from a subject are always assigned to the same fold.
+10) SHAP values quantify model contribution and should not be interpreted as causal physiological effects.
+=================================================================================================================================================
