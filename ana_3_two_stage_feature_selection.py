@@ -7,7 +7,7 @@ import seaborn as sns
 from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import squareform
 from sklearn.metrics import silhouette_score
-
+from matplotlib.ticker import FuncFormatter
 
 plt.rcParams["font.sans-serif"] = ["Arial"]
 plt.rcParams["font.family"] = "sans-serif"
@@ -48,19 +48,18 @@ def main():
     target = args.target.upper()
     n_features = 161
 
-    
     matrix_csv_path = (
         Path(args.matrix_csv)
         if args.matrix_csv
         else Path(
-            f"{target}_{n_features}_features_SHAP_analysis_5fold_CV_feature_and_SHAP_matrix.csv"
+            f"{target}_{n_features}_features_SHAP_analysis_5fold_CV_Finnegan_feature_and_SHAP_matrix.csv"
         )
     )
     summary_csv_path = (
         Path(args.summary_csv)
         if args.summary_csv
         else Path(
-            f"{target}_{n_features}_features_SHAP_analysis_5fold_CV_SHAP_feature_summary.csv"
+            f"{target}_{n_features}_features_SHAP_analysis_5fold_CV_Finnegan_SHAP_feature_summary.csv"
         )
     )
 
@@ -72,7 +71,6 @@ def main():
     print(f"Loading SHAP matrix: {matrix_csv_path.resolve()}")
     df_merged = pd.read_csv(matrix_csv_path)
 
-    
     meta_cols_set = {
         "sample_index",
         "subject",
@@ -94,7 +92,9 @@ def main():
     )
     print(f"Extracted SHAP matrix: {df_shap.shape[0]} samples x {df_shap.shape[1]} features.")
 
-
+    # =========================================================================
+    # Stage 1: Generate and save clustermap for full 161 features
+    # =========================================================================
     corr_shap_full = df_shap.corr(method="pearson")
     dist_mat_full = np.clip(1.0 - corr_shap_full.values, 0.0, 2.0)
     np.fill_diagonal(dist_mat_full, 0.0)
@@ -129,7 +129,7 @@ def main():
     plt.close()
     print(f"Clustermap saved (Full 161 features): {out_clustermap_path.resolve()} (300 DPI)")
 
-  
+    # Read feature metadata
     if summary_csv_path.exists():
         df_summary = pd.read_csv(summary_csv_path)
         feat_info_dict = df_summary.set_index("feature_name").to_dict(orient="index")
@@ -144,7 +144,7 @@ def main():
         mean_abs_all = np.mean(np.abs(df_shap.values), axis=0)
 
     # =========================================================================
-    # 【Stage 1】Eliminate features with Mean |SHAP| greater than or equal to the overall mean
+    # Stage 1 Screening: Keep features with Mean |SHAP| >= average
     # =========================================================================
     mean_shap_threshold = np.mean(mean_abs_all)
     stage1_mask = mean_abs_all >= mean_shap_threshold
@@ -171,7 +171,7 @@ def main():
     print(f"Stage 1 Screened CSV Saved    : {out_stage1_csv.resolve()}")
 
     # =========================================================================
-    # 【Stage 2】Silhouette Coefficient Maximization Adaptive Optimization (0.20 ~ 0.80, step=0.05)
+    # Stage 2: Silhouette score optimization (0.20 ~ 0.80, step=0.05)
     # =========================================================================
     df_shap_s1 = df_shap[stage1_features]
     corr_shap_s1 = df_shap_s1.corr(method="pearson")
@@ -188,7 +188,7 @@ def main():
         clusters = fcluster(linkage_matrix_s1, t=dist_cut, criterion="distance")
         n_clusters = len(np.unique(clusters))
 
-        # 计算轮廓系数 (需满足 2 <= 簇数 <= 样本数-1)
+        # Calculate silhouette score
         if 1 < n_clusters < len(stage1_features):
             score = silhouette_score(dist_mat_s1, clusters, metric="precomputed")
         else:
@@ -203,7 +203,7 @@ def main():
 
     df_eval = pd.DataFrame(eval_records).dropna().reset_index(drop=True)
 
-    
+    # Find optimal threshold r* for global maximum mean silhouette score
     best_idx = df_eval["silhouette_score"].idxmax()
     best_r = float(df_eval.loc[best_idx, "threshold_r"])
     best_score = float(df_eval.loc[best_idx, "silhouette_score"])
@@ -217,13 +217,13 @@ def main():
     print(f"Optimal Number of Feature Clusters  : {best_k} features")
 
     # =========================================================================
-    # 【Step 2】output stage 2 full feature clustering and representative features CSV
+    # Export full feature clustering and optimal representative features to CSV
     # =========================================================================
     best_dist_cut = 1.0 - best_r
     final_clusters = fcluster(linkage_matrix_s1, t=best_dist_cut, criterion="distance")
     df_stage1["cluster_id"] = final_clusters
 
-
+    # 1. Extract representative feature with max mean |SHAP| for each cluster
     df_stage2_rep = (
         df_stage1.sort_values(by=["cluster_id", "mean_abs_shap"], ascending=[True, False])
         .groupby("cluster_id")
@@ -233,7 +233,7 @@ def main():
         .reset_index(drop=True)
     )
 
-
+    # 2. Build comprehensive table for all 161 features
     rep_feature_set = set(df_stage2_rep["feature_name"])
     cluster_mapping = dict(zip(df_stage1["feature_name"], df_stage1["cluster_id"]))
 
@@ -249,83 +249,80 @@ def main():
         ascending=[False, True, False]
     ).reset_index(drop=True)
 
-
+    # 3. Write full assignment table and representative features to a single CSV
     out_stage2_csv = Path(f"{target}_SHAP_stage2_clusters_features.csv")
     with open(out_stage2_csv, "w", encoding="utf-8-sig", newline="") as f:
-        
         df_all_161_features.to_csv(f, index=False)
-        
         
         f.write("\n")
         f.write("# " + "=" * 78 + "\n")
         f.write(f"# STAGE 2 FINAL REPRESENTATIVE FEATURES ({len(df_stage2_rep)} SELECTED FEATURES)\n")
         f.write("# " + "=" * 78 + "\n")
         
-        
         df_stage2_rep.to_csv(f, index=False)
 
     print(f"Stage 2 Full Clustering & Representative Features CSV : {out_stage2_csv.resolve()}")
 
-    
+    # Print category distribution of final representative features
     print("\nFinal Representative Features - Category Breakdown:")
     print(df_stage2_rep["category"].value_counts().to_string())
 
     # =========================================================================
-    # 【Step 3】Plotting Silhouette Score vs Threshold r and Number of Features k
+    # Plot and save Silhouette Score optimization curves
     # =========================================================================
     out_sil_png_path = Path(f"{target}_Clustering_threshold_Silhouette_Score.png")
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5.5), dpi=300)
 
-   
+    # Formatter to explicitly show '0' without decimal points
+    def y_formatter(x, pos):
+        return '0' if x == 0 else f"{x:.2f}"
+    formatter = FuncFormatter(y_formatter)
+
+    # Subplot (a): Correlation threshold (r) vs Mean silhouette coefficient
     ax1.plot(
         df_eval["threshold_r"],
         df_eval["silhouette_score"],
         marker="o",
         color="#1f77b4",
         linewidth=2.2,
-        markersize=6,
-        label="Mean Silhouette Score",
+        markersize=10,
+        label="Mean silhouette coefficient (selected features)",
     )
-    ax1.axvline(
+    # Highlight optimal point with red marker
+    ax1.plot(
         best_r,
+        best_score,
+        marker="o",
         color="#d62728",
-        linestyle="--",
-        linewidth=1.8,
-        label=f"Optimal r = {best_r:.2f} ({best_k} feats)",
-    )
-    ax1.scatter(
-        [best_r],
-        [best_score],
-        color="#d62728",
-        s=140,
+        markersize=10,
+        linestyle="None",
         zorder=5,
-        marker="*",
+        label=f"Optimal threshold ($r$ = {best_r:.2f})",
     )
-    ax1.set_title(
-        f"(a) Correlation Threshold (r) vs Mean Silhouette Score (Δ{target})",
-        fontsize=12,
-        fontweight="bold",
-        pad=10,
-    )
-    ax1.set_xlabel("Correlation Threshold (r)", fontsize=11, fontweight="bold")
-    ax1.set_ylabel("Mean Silhouette Score", fontsize=11, fontweight="bold")
-    ax1.grid(True, linestyle="--", alpha=0.5)
-    ax1.legend(loc="best", frameon=True)
 
+    ax1.set_ylim(0.05, 0.25)
+    ax1.yaxis.set_major_formatter(formatter)
     
+    ax1.set_xlabel("Correlation threshold ($r$)", fontsize=14)
+    ax1.set_ylabel("Mean silhouette coefficient", fontsize=14)
+    ax1.tick_params(axis="both", direction="in", labelsize=12)
+    ax1.grid(True, linestyle="--", alpha=0.5)
+    ax1.legend(loc="best", frameon=False, fontsize=14)
+
+    # Annotate discrete sample points
     for idx in range(len(df_eval)):
         row = df_eval.iloc[idx]
         ax1.annotate(
             f"{int(row['n_clusters'])}f",
             (row["threshold_r"], row["silhouette_score"]),
             textcoords="offset points",
-            xytext=(0, 7),
+            xytext=(0, 8),
             ha="center",
-            fontsize=7.5,
+            fontsize=12,
             color="#333333",
         )
 
-    
+    # Subplot (b): Retained features (k) vs Mean silhouette coefficient
     df_sorted_k = df_eval.sort_values(by="n_clusters").reset_index(drop=True)
     ax2.plot(
         df_sorted_k["n_clusters"],
@@ -333,41 +330,54 @@ def main():
         marker="s",
         color="#2ca02c",
         linewidth=2.2,
-        markersize=6,
-        label="Cluster Validity Curve",
+        markersize=10,
+        label="Cluster validity curve",
     )
-    ax2.axvline(
+    # Highlight optimal point with red marker
+    ax2.plot(
         best_k,
+        best_score,
+        marker="s",
         color="#d62728",
-        linestyle="--",
-        linewidth=1.8,
-        label=f"Optimal k = {best_k} (Score: {best_score:.3f})",
-    )
-    ax2.scatter(
-        [best_k],
-        [best_score],
-        color="#d62728",
-        s=140,
+        markersize=10,
+        linestyle="None",
         zorder=5,
-        marker="*",
+        label=f"Optimal number of features ($j_2$ = {best_k})",
     )
-    ax2.set_title(
-        f"(b) Retained Feature Count (k) vs Mean Silhouette Score (Δ{target})",
-        fontsize=12,
-        fontweight="bold",
-        pad=10,
-    )
-    ax2.set_xlabel("Number of Feature Clusters (k)", fontsize=11, fontweight="bold")
-    ax2.set_ylabel("Mean Silhouette Score", fontsize=11, fontweight="bold")
-    ax2.grid(True, linestyle="--", alpha=0.5)
-    ax2.legend(loc="best", frameon=True)
+    
+    ax2.set_ylim(0.05, 0.25)
+    ax2.yaxis.set_major_formatter(formatter)
 
-    plt.suptitle(
-        f"Internal Cluster Validity: Silhouette Score Maximization for Δ{target} Feature Selection",
-        fontsize=14,
-        fontweight="bold",
-        y=1.02,
-    )
+    ax2.set_xlabel("Number of feature clusters ($j_2$)", fontsize=14)
+    ax2.set_ylabel("Mean silhouette coefficient", fontsize=14)
+    ax2.tick_params(axis="both", direction="in", labelsize=12)
+    ax2.grid(True, linestyle="--", alpha=0.5)
+    ax2.legend(loc="best", frameon=False, fontsize=14)
+
+    prev_x = -999
+    for idx in range(len(df_sorted_k)):
+        row = df_sorted_k.iloc[idx]
+        curr_x = row["n_clusters"]
+        curr_y = row["silhouette_score"]
+        
+        if abs(curr_x - prev_x) < 2:
+            y_offset = -15
+            prev_x = -999 
+        else:
+            y_offset = 8
+            prev_x = curr_x
+
+        ax2.annotate(
+            f"{curr_y:.2f}",
+            (curr_x, curr_y),
+            textcoords="offset points",
+            xytext=(0, y_offset),
+            ha="center",
+            fontsize=12,
+            color="#333333",
+        )
+
+
     plt.tight_layout()
     plt.savefig(out_sil_png_path, dpi=300, bbox_inches="tight")
     plt.close()
