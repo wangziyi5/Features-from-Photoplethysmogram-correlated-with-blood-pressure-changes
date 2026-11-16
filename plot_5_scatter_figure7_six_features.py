@@ -15,6 +15,11 @@ plt.rcParams["xtick.labelsize"] = 18
 plt.rcParams["ytick.labelsize"] = 18
 plt.rcParams["axes.unicode_minus"] = False
 
+plt.rcParams["mathtext.fontset"] = "custom"
+plt.rcParams["mathtext.rm"] = "Arial"
+plt.rcParams["mathtext.it"] = "Arial:italic"
+plt.rcParams["mathtext.bf"] = "Arial:bold"
+plt.rcParams["mathtext.sf"] = "Arial:italic:bold"
 
 def format_ticks(val, pos):
     """Format tick labels: display 0.0 as 0 and use standard Unicode minus."""
@@ -97,9 +102,9 @@ feature_configs = [
     {"key": "Skewness", "x_label": "\u2206 Skewness", "filename": "scatter_delta_Skewness_vs_delta_SBP.png"},
     {"key": "Kurtosis", "x_label": "\u2206 Kurtosis", "filename": "scatter_delta_Kurtosis_vs_delta_SBP.png"},
     {"key": "IPA", "x_label": "\u2206 IPA", "filename": "scatter_delta_IPA_vs_delta_SBP.png"},
-    {"key": "b/a", "x_label": "\u2206 b/a", "filename": "scatter_delta_b_a_vs_delta_SBP.png"},
+    {"key": "b/a", "x_label": "\u2206 $\\mathsf{b}$/$\\mathsf{a}$", "filename": "scatter_delta_b_a_vs_delta_SBP.png"},
     {"key": "Tm_wb", "x_label": "\u2206 Tm_wb", "filename": "scatter_delta_Tm_wb_vs_delta_SBP.png"},
-    {"key": "AI_OD_AMS", "x_label": "\u2206 AI_OD_AMS", "filename": "scatter_delta_AI_OD_AMS_vs_delta_SBP.png"},
+    {"key": "AI_OD_AMS", "x_label": "\u2206 Am_OD/AMS", "filename": "scatter_delta_AI_OD_AMS_vs_delta_SBP.png"},
 ]
 
 # ----------------- Data Loading & Delta Calculation -----------------

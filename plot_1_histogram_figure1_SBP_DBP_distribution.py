@@ -9,7 +9,7 @@ plt.rcParams["font.size"] = 18
 plt.rcParams["axes.unicode_minus"] = False 
 
 def main():
-    base_dir = Path("/Users/ziyiwang/Documents/Work_continuous_BP_monitoring/OUTPUT")
+    base_dir = Path("/Users/ziyiwang/Documents/Project_2026_month1_6/Work_260223_continuous_BP_monitoring/OUTPUT")
     
     output_dir = Path(__file__).resolve().parent if "__file__" in locals() else Path.cwd()
 

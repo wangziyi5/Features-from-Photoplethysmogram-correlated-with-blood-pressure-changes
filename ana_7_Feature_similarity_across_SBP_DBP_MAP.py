@@ -8,7 +8,7 @@ def load_representative_features(csv_path: Path) -> pd.DataFrame:
     if not csv_path.exists():
         raise FileNotFoundError(f"Feature file not found: {csv_path.resolve()}")
 
-    # 1. Attempt to filter directly from the top section (full 161 features) using the boolean flag[cite: 3]
+    # 1. Attempt to filter directly from the top section (full 161 features) using the boolean flag
     try:
         df_top = pd.read_csv(csv_path, comment="#")
         if "is_stage2_representative" in df_top.columns:
@@ -16,7 +16,7 @@ def load_representative_features(csv_path: Path) -> pd.DataFrame:
     except Exception:
         pass
 
-    # 2. If the format contains explicit separators, extract the bottom table[cite: 3]
+    # 2. If the format contains explicit separators, extract the bottom table
     with open(csv_path, "r", encoding="utf-8-sig") as f:
         content = f.read()
 
@@ -47,14 +47,14 @@ def analyze_overlapping_features():
     dbp_set = feature_sets["DBP"]
     map_set = feature_sets["MAP"]
 
-    # Set operations[cite: 3]
+    # Set operations
     common_all_3 = sbp_set & dbp_set & map_set
     common_sbp_dbp = sbp_set & dbp_set
     common_sbp_map = sbp_set & map_set
     common_dbp_map = dbp_set & map_set
     all_union = sbp_set | dbp_set | map_set
 
-    # Print terminal report[cite: 3]
+    # Print terminal report
     print("=" * 80)
     print("STAGE 2 REPRESENTATIVE FEATURE OVERLAP ANALYSIS REPORT (SBP / DBP / MAP)")
     print("=" * 80)
@@ -75,7 +75,7 @@ def analyze_overlapping_features():
     print(f"  ▶ DBP ∩ MAP (Total: {len(common_dbp_map)}): {sorted(common_dbp_map)}")
     print("=" * 80)
 
-    # Compile and export cross-target comparison summary[cite: 3]
+    # Compile and export cross-target comparison summary
     records = []
     for feat in all_union:
         cat = "Unknown"

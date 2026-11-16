@@ -12,7 +12,14 @@ plt.rcParams["axes.linewidth"] = 1.0
 plt.rcParams["axes.unicode_minus"] = False  
 
 # ----------------- Path & Parameter Setup -----------------
-csv_path = "/Users/ziyiwang/Documents/Work_continuous_BP_monitoring/OUTPUT/yy04_subject_015/all_trimmed.csv"
+base_dir = "/Users/ziyiwang/Documents/Project_2026_month1_6/Work_260223_continuous_BP_monitoring/OUTPUT"
+exclude_dirs = {
+    "yy04_subject_000",
+    "yy04_subject_001",
+    "yy04_subject_002",
+    "yy04_subject_003",
+    "yy04_subject_004",
+}
 
 output_dir = (
     os.path.dirname(os.path.abspath(__file__))
@@ -20,7 +27,7 @@ output_dir = (
     else os.getcwd()
 )
 
-x_labels = ["S1 (\u221245°)", "S2 (0°)", "S3 (90°)", "S4 (\u221290°)", "S5 (\u221245°)"]
+x_labels = ["(S1, \u221245°)", "(S2, 0°)", "(S3, 90°)", "(S4, \u221290°)", "(S5, \u221245°)"]
 x_indices = np.arange(len(x_labels))
 
 col_map = {
@@ -33,8 +40,36 @@ col_map = {
     "Kurtosis": 165,
 }
 
-df = pd.read_csv(csv_path)
-data = {key: df.iloc[:5, idx].to_numpy(dtype=float) for key, idx in col_map.items()}
+# Collect data from all valid subjects and compute average per posture
+subject_data = {key: [] for key in col_map.keys()}
+
+for folder_name in sorted(os.listdir(base_dir)):
+    if folder_name in exclude_dirs:
+        continue
+    folder_path = os.path.join(base_dir, folder_name)
+    if not os.path.isdir(folder_path):
+        continue
+    csv_path = os.path.join(folder_path, "all_trimmed.csv")
+    if not os.path.exists(csv_path):
+        continue
+    
+    try:
+        df = pd.read_csv(csv_path)
+        if len(df) >= 5:
+            for key, idx in col_map.items():
+                vals = df.iloc[:5, idx].to_numpy(dtype=float)
+                subject_data[key].append(vals)
+    except Exception as e:
+        print(f"Error reading {csv_path}: {e}")
+
+# Calculate mean across all subjects for each posture
+data = {}
+for key, list_vals in subject_data.items():
+    if len(list_vals) > 0:
+        stacked = np.array(list_vals)
+        data[key] = np.mean(stacked, axis=0)
+    else:
+        data[key] = np.zeros(5)
 
 # ----------------- Formatting Function -----------------
 def apply_rachim_style(ax, y_label):
@@ -67,12 +102,11 @@ def format_negative_ticks(ax):
             return "0"
         else:
             return "{:.2f}".format(x).rstrip("0").rstrip(".")
-    # Use 2 decimal places; trailing zeros stripped for a clean look
     ax.yaxis.set_major_formatter(ticker.FuncFormatter(fmt))
 
 
 # =======================================================================
-# 1. Combined SBP & DBP Plot
+# 1. Combined SBP & DBP Plot (Average)
 # =======================================================================
 fig, ax = plt.subplots(figsize=(6.2, 3.5))
 
@@ -92,7 +126,6 @@ ax.plot(
 
 apply_rachim_style(ax, "BP (mmHg)")
 
-# BP ylim: 50 – 140; ticks from 60 to 140, step 20
 ax.set_ylim(50, 140)
 ax.set_yticks([60, 80, 100, 120, 140])
 
@@ -104,21 +137,21 @@ ax.legend(
 )
 
 plt.tight_layout()
-fig_path_bp = os.path.join(output_dir, "yy04_subject_005_1_BP.png")
+fig_path_bp = os.path.join(output_dir, "all_subjects_average_1_BP.png")
 fig.savefig(fig_path_bp, dpi=300)
 plt.close(fig)
 print(f"Saved: {fig_path_bp}")
 
 
 # =======================================================================
-# 2. Individual Feature Plots
+# 2. Individual Feature Plots (Average)
 # =======================================================================
 single_features = [
-    ("IPA",      "IPA",      0.0,  0.3,  0.05),
+    ("IPA",      "IPA",      0.0,  0.4,  0.1),
     ("Kurtosis", "Kurtosis", -1.5, -0.5, 0.25),
     ("Skewness", "Skewness", -0.5, 0.5,  0.25),
-    ("b/a",      "b/a",      -1.3, -0.7, 0.1),
-    ("d/a",      "d/a",      -0.3, 0.1,  0.1),  
+    ("b/a",      "$\\mathit{b/a}$",      -1.5, -0.7, 0.2),
+    ("d/a",      "$\\mathit{d/a}$",      -0.2, 0.2,  0.1),  
 ]
 
 output_suffix = {
@@ -141,14 +174,11 @@ for feat_key, display_name, y_min, y_max, y_step in single_features:
 
     apply_rachim_style(ax, "Value")
 
-   
     ax.set_ylim(y_min, y_max)
     ax.set_yticks(np.arange(y_min, y_max + y_step * 0.5, y_step))
 
-   
     format_negative_ticks(ax)
 
-    
     if feat_key == "IPA":
         ax.set_yticklabels(["0" if t == 0 else f"{t:.2f}" for t in ax.get_yticks()])
 
@@ -160,7 +190,7 @@ for feat_key, display_name, y_min, y_max, y_step in single_features:
     )
 
     plt.tight_layout()
-    fig_path = os.path.join(output_dir, f"yy04_subject_005_{output_suffix[feat_key]}")
+    fig_path = os.path.join(output_dir, f"all_subjects_average_{output_suffix[feat_key]}")
     fig.savefig(fig_path, dpi=300)
     plt.close(fig)
     print(f"Saved: {fig_path}")

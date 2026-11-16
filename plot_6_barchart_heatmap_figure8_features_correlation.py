@@ -122,6 +122,44 @@ def load_union_features(summary_csv_path: Path) -> list[str]:
     return df_summary["feature_name"].dropna().astype(str).tolist()
 
 
+# --- [NEW] Load Target-Specific Features ---
+def load_target_specific_features(csv_path: Path) -> list[str]:
+    """
+    Load target-specific features from the specified CSV file.
+    Extracts features listed below 'STAGE 2 FINAL REPRESENTATIVE FEATURES'.
+    """
+    features = []
+    start_reading = False
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if "STAGE 2 FINAL REPRESENTATIVE FEATURES" in line.upper():
+                    start_reading = True
+                    continue
+                
+                if start_reading and not line.startswith('#'):
+                    # Skip standard CSV header rows if they exist
+                    if "cluster_id" in line.lower() or "feature_name" in line.lower():
+                        continue
+                    parts = line.split(',')
+                    # Assuming CSV format: cluster_id, feature_name, ...
+                    if len(parts) >= 2 and parts[1].strip():
+                        feat_name = parts[1].strip().replace('"', '').replace("'", "")
+                        features.append(feat_name)
+                    # Fallback if it's a single column
+                    elif len(parts) == 1 and parts[0].strip():
+                        feat_name = parts[0].strip().replace('"', '').replace("'", "")
+                        features.append(feat_name)
+    except Exception as e:
+        print(f"[Error] Failed to read {csv_path}: {e}")
+        
+    return features
+# -------------------------------------------
+
+
 def get_feature_category(feat_name: str, feat_idx_1based: int) -> str:
     """Classify feature category based on 1-based index and demographics."""
     if str(feat_name).strip().lower() in [
@@ -425,12 +463,9 @@ def plot_mi_coverage_distribution(
     mi_threshold: float,
     coverage_pct: float,
     out_png: Path,
+    target_name: str = "",
 ) -> None:
-    """Plot Stage2_mutual_information_coverage_1.png:
-
-    Distribution of max Mutual Information between removed features (N=120) and
-    selected 41 features.
-    """
+    """Plot mutual information coverage histogram (Target-specific)"""
     if max_mi_series.empty:
         return
 
@@ -439,7 +474,7 @@ def plot_mi_coverage_distribution(
 
     fig, ax = plt.subplots(figsize=(8, 6), dpi=300)
 
-    # 1. Histogram without KDE, count stat (bars sum to exactly 120 removed features)
+    # 1. Histogram without KDE, count stat
     sns.histplot(
         max_mi_series,
         kde=False,
@@ -458,46 +493,55 @@ def plot_mi_coverage_distribution(
         mi_threshold,
         color="#d62728",
         linestyle="--",
-        linewidth=2.0,
+        linewidth=2.5,
         label=f"Threshold = {mi_threshold:.2f} nats",
     )
     ax.axvline(
         mean_val,
         color="#2ca02c",
         linestyle="-.",
-        linewidth=1.8,
+        linewidth=2.3,
         label=f"Mean Max-MI = {mean_val:.2f} nats",
     )
     ax.axvline(
         median_val,
         color="#ff7f0e",
         linestyle=":",
-        linewidth=1.8,
+        linewidth=2.3,
         label=f"Median Max-MI = {median_val:.2f} nats",
     )
 
     # 3. Axis labels with increased font sizes
     ax.set_xlabel(
         "Maximum Mutual Information (nats)",
-        fontsize=18,
+        fontsize=20,
         fontweight="bold",
         fontname="Arial",
     )
     ax.set_ylabel(
         "Feature number",
-        fontsize=18,
+        fontsize=20,
         fontweight="bold",
         fontname="Arial",
     )
 
     # 4. Inward ticks on both axes with larger font size
-    ax.tick_params(axis="both", direction="in", labelsize=18)
+    ax.tick_params(axis="both", direction="in", labelsize=20)
 
-    # 5. Integer y-ticks and remove the 0.0 label at the origin
+    # 5. Dynamic y-ticks based on actual distribution to handle varying removed feature counts
     ax.set_xlim(0, 5)
     ax.set_xticks(np.arange(0, 6, 1))
-    ax.set_ylim(0, 40)
-    ax.set_yticks(np.arange(0, 41, 5))
+    
+    # Dynamically scale Y-axis based on histogram max bin count
+    if target_name == "SBP":
+        ax.set_ylim(0, 80)
+        ax.set_yticks(np.arange(0, 81, 10))
+    else:
+        max_count = int(np.histogram(max_mi_series, bins=np.arange(0, 5.25, 0.25))[0].max())
+        y_upper = ((max_count // 5) + 2) * 5
+        ax.set_ylim(0, y_upper)
+        ax.set_yticks(np.arange(0, y_upper + 1, 5))
+    
     ax.yaxis.set_major_formatter(
         plt.FuncFormatter(lambda y, _: "" if np.isclose(y, 0) else f"{int(y)}")
     )
@@ -509,7 +553,7 @@ def plot_mi_coverage_distribution(
         frameon=True,
         facecolor="none",
         edgecolor="none",
-        fontsize=18,
+        fontsize=20,
         loc="upper right",
     )
 
@@ -688,13 +732,13 @@ def main():
         default_candidates = [
             Path("all_trimmed.csv"),
             Path(
-                "SBP_161_features_SHAP_analysis_5fold_CV_feature_and_SHAP_matrix.csv"
+                "SBP_161_features_SHAP_analysis_5fold_CV_Finnegan_feature_and_SHAP_matrix.csv"
             ),
             Path(
-                "DBP_161_features_SHAP_analysis_5fold_CV_feature_and_SHAP_matrix.csv"
+                "DBP_161_features_SHAP_analysis_5fold_CV_Finnegan_feature_and_SHAP_matrix.csv"
             ),
             Path(
-                "MAP_161_features_SHAP_analysis_5fold_CV_feature_and_SHAP_matrix.csv"
+                "MAP_161_features_SHAP_analysis_5fold_CV_Finnegan_feature_and_SHAP_matrix.csv"
             ),
         ]
         matrix_path = next((p for p in default_candidates if p.exists()), None)
@@ -735,23 +779,15 @@ def main():
     m_all = calculate_collinearity_metrics(corr_all, threshold=args.threshold)
     m_41 = calculate_collinearity_metrics(corr_41, threshold=args.threshold)
 
-    # 5. Compute Mutual Information Coverage
+    # 5. Compute Mutual Information Base Matrix
+    print("\nComputing pairwise Mutual Information matrix (KSG Estimator)...")
     df_mi_all = compute_pairwise_mutual_information(
         df_feat_all,
         n_neighbors=args.n_neighbors,
         random_state=args.random_state,
     )
-    cov_stats = calculate_information_coverage(
-        df_mi=df_mi_all,
-        union_features=(
-            union_features
-            if not missing_feats
-            else df_feat_41.columns.tolist()
-        ),
-        mi_threshold=args.mi_threshold,
-    )
 
-    # 6. Print Summary
+    # 6. Print Base Summary
     print("\n" + "=" * 72)
     print(
         "PEARSON CORRELATION COLLINEARITY ANALYSIS (|rho| >"
@@ -794,27 +830,6 @@ def main():
         f" {m_all['p_strong_features']:.2f}% -> {m_41['p_strong_features']:.2f}%"
         f" (Delta: -{feat_red:.2f}%)"
     )
-    print("=" * 72)
-    print(
-        "MUTUAL INFORMATION COVERAGE ANALYSIS (Threshold >"
-        f" {args.mi_threshold:.2f} nats)"
-    )
-    print("=" * 72)
-    print(f"  - Removed Features Count:             {cov_stats['n_removed']}")
-    print(
-        "  - Covered by >= 1 Selected Feature:  "
-        f" {cov_stats['n_covered']} / {cov_stats['n_removed']}"
-    )
-    print(
-        "  - Information Coverage:              "
-        f" coverage = {cov_stats['coverage']:.2f}%"
-    )
-    print(
-        "  - Mean / Median Max-MI of Removed:   "
-        f" {cov_stats['mean_max_mi']:.4f} nats /"
-        f" {cov_stats['median_max_mi']:.4f} nats"
-    )
-    print("=" * 72 + "\n")
 
     # 7. Generate and save PNG Heatmaps
     out_all_png = Path(
@@ -825,18 +840,76 @@ def main():
     out_41_png = Path(f"{args.output_prefix}_correlation_heatmap.png")
     plot_filtered_41_features_heatmap(corr_41, pval_41, out_41_png)
 
-    # 8. Generate and save Mutual Information Coverage Plots
-    out_mi_dist_png = Path("Stage2_mutual_information_coverage_1.png")
-    plot_mi_coverage_distribution(
-        max_mi_series=cov_stats["max_mi_per_removed"],
-        mi_threshold=args.mi_threshold,
-        coverage_pct=cov_stats["coverage"],
-        out_png=out_mi_dist_png,
+    # 8. [NEW] Target-Specific Mutual Information Coverage Plots
+    print("\n" + "=" * 72)
+    print(
+        "TARGET-SPECIFIC MUTUAL INFORMATION COVERAGE ANALYSIS (Threshold >"
+        f" {args.mi_threshold:.2f} nats)"
     )
+    print("=" * 72)
+    
+    data_dir = Path("output_data_used")
+    targets = ["SBP", "DBP", "MAP"]
+    
+    for target in targets:
+        target_csv_path = data_dir / f"{target}_SHAP_stage2_clusters_features.csv"
+        
+        if not target_csv_path.exists():
+            print(f"[Warning] Target specific CSV not found for {target}: {target_csv_path}")
+            continue
+            
+        target_features = load_target_specific_features(target_csv_path)
+        valid_target_features = [f for f in target_features if f in df_feat_all.columns]
+        
+        if not valid_target_features:
+            print(f"[Warning] No valid features matched for {target}. Skipping MI plot.")
+            continue
+            
+        cov_stats_target = calculate_information_coverage(
+            df_mi=df_mi_all,
+            union_features=valid_target_features,
+            mi_threshold=args.mi_threshold,
+        )
+        
+        print(f"[{target} Analysis]")
+        print(f"  - Target-Specific Features Retained:  {len(valid_target_features)}")
+        print(f"  - Removed Features Count:             {cov_stats_target['n_removed']}")
+        print(
+            "  - Covered by >= 1 Selected Feature:  "
+            f" {cov_stats_target['n_covered']} / {cov_stats_target['n_removed']}"
+        )
+        print(
+            "  - Information Coverage:              "
+            f" coverage = {cov_stats_target['coverage']:.2f}%"
+        )
+        print(
+            "  - Mean / Median Max-MI of Removed:   "
+            f" {cov_stats_target['mean_max_mi']:.4f} nats /"
+            f" {cov_stats_target['median_max_mi']:.4f} nats"
+        )
+        print("-" * 72)
+        
+        # Plot corresponding histogram
+        out_target_png = Path(f"figure8_histogram_mutual_information_coverage_{target}.png")
+        plot_mi_coverage_distribution(
+            max_mi_series=cov_stats_target["max_mi_per_removed"],
+            mi_threshold=args.mi_threshold,
+            coverage_pct=cov_stats_target["coverage"],
+            out_png=out_target_png,
+            target_name=target,
+        )
 
+    # 9. (Optional) Keep the overall MI Curve based on the 41 union features
+    cov_stats_union = calculate_information_coverage(
+        df_mi=df_mi_all,
+        union_features=(
+            union_features if not missing_feats else df_feat_41.columns.tolist()
+        ),
+        mi_threshold=args.mi_threshold,
+    )
     out_mi_curve_png = Path("Stage2_mutual_information_coverage_2.png")
     plot_mi_coverage_curve(
-        max_mi_series=cov_stats["max_mi_per_removed"],
+        max_mi_series=cov_stats_union["max_mi_per_removed"],
         out_png=out_mi_curve_png,
         threshold_min=0.2,
         threshold_max=0.8,

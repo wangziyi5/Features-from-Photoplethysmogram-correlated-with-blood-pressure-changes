@@ -4,10 +4,21 @@ import random
 import re
 import numpy as np
 import pandas as pd
+from scipy.stats import shapiro, ttest_rel, wilcoxon, t as student_t
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import KFold
 from sklearn.tree import DecisionTreeRegressor
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+
+plt.rcParams["font.sans-serif"] = ["Arial"]
+plt.rcParams["font.family"] = "sans-serif"
+plt.rcParams["font.size"] = 20
+plt.rcParams["axes.unicode_minus"] = True
+plt.rcParams["mathtext.fontset"] = "custom"
+plt.rcParams["mathtext.rm"] = "Arial"
+plt.rcParams["mathtext.it"] = "Arial:italic"
+plt.rcParams["mathtext.bf"] = "Arial:bold"
 
 # Fix all random seeds to guarantee exact reproducibility
 RANDOM_STATE = 42
@@ -32,8 +43,6 @@ FEATURE_FILES = {
 }
 DEFINITION_FILE = "supplement_feature_definitions.xlsx"
 
-# Demographic 1-based column mapping to 0-based column indices in all_trimmed.csv
-# Height: Col 6 -> 5, Weight: Col 7 -> 6, BMI: Col 8 -> 7, Gender: Col 9 -> 8, Age: Col 10 -> 9
 DEMO_COL_MAP_0BASED = {
     "HEIGHT": 5,
     "WEIGHT": 6,
@@ -64,10 +73,7 @@ def relaxed_clean_name(value):
 
 
 def load_feature_definitions(excel_path):
-    """
-    Map feature name to serial number (ID) from supplement_feature_definitions.xlsx.
-    The workbook has no header: column 1 is serial number, column 2 is feature name.
-    """
+    """Map feature name to serial number (ID) from supplement_feature_definitions.xlsx."""
     df_def = pd.read_excel(excel_path, header=None, usecols=[0, 1])
     name_to_id = {}
     relaxed_to_id = {}
@@ -93,7 +99,6 @@ def load_feature_definitions(excel_path):
             relaxed_to_id[relax_key] = serial_number
         serial_numbers.append(serial_number)
 
-    # Determine offset: 1-based serial number n maps to 0-based index n + 9 (Col n + 10 in CSV)
     min_serial = min(serial_numbers) if serial_numbers else 1
     serial_offset = 9 if min_serial >= 1 else 10
 
@@ -101,15 +106,11 @@ def load_feature_definitions(excel_path):
 
 
 def load_stage2_selected_features(file_name, search_dirs):
-    """
-    Extract feature names under 'STAGE 2 FINAL REPRESENTATIVE FEATURES' section.
-    Locates the section block, parses the table header, and extracts the 'feature_name' column.
-    """
+    """Extract feature names under 'STAGE 2 FINAL REPRESENTATIVE FEATURES' section."""
     file_path = find_file(file_name, search_dirs)
     if file_path is None:
         raise FileNotFoundError(f"Could not locate feature file: {file_name}")
 
-    # Read raw lines with multi-encoding support
     content = None
     for enc in ["utf-8-sig", "utf-8", "gbk", "latin1"]:
         try:
@@ -122,7 +123,6 @@ def load_stage2_selected_features(file_name, search_dirs):
     if content is None:
         raise ValueError(f"Could not decode feature file: {file_path}")
 
-    # Scan for section header containing 'STAGE 2' and 'REPRESENTATIVE'
     stage2_start_idx = -1
     for idx, line in enumerate(content):
         line_clean = line.strip().upper()
@@ -136,11 +136,9 @@ def load_stage2_selected_features(file_name, search_dirs):
             stripped = line.strip()
             if not stripped:
                 continue
-            # Skip separator lines (e.g., '# =====')
             if stripped.startswith("#"):
                 if set(stripped.replace("#", "").strip()) <= {"=", "-", "_"}:
                     continue
-                # Stop if another major section begins
                 if "STAGE" in stripped.upper() or "SUMMARY" in stripped.upper():
                     break
                 continue
@@ -148,7 +146,6 @@ def load_stage2_selected_features(file_name, search_dirs):
 
         if table_lines:
             df_stage2 = pd.read_csv(io.StringIO("".join(table_lines)))
-            # Strictly locate the 'feature_name' column (never cluster_id)
             feat_col = None
             for col in df_stage2.columns:
                 c_clean = str(col).strip().lower()
@@ -173,7 +170,6 @@ def load_stage2_selected_features(file_name, search_dirs):
                 if features:
                     return features
 
-    # Fallback: single-table CSV format with feature_name column
     for enc in ["utf-8-sig", "utf-8", "gbk", "latin1"]:
         try:
             df_fallback = pd.read_csv(file_path, encoding=enc)
@@ -231,11 +227,9 @@ def map_feature_to_col_idx(feat_name, feat_mapping, relaxed_mapping, serial_offs
     feature_key = normalise_feature_name(feat_name)
     relaxed_key = relaxed_clean_name(feat_name)
 
-    # Demographic variables map directly to static indices (5 to 9)
     if feature_key.upper() in DEMO_COL_MAP_0BASED:
         return DEMO_COL_MAP_0BASED[feature_key.upper()], True
 
-    # Check mapping from supplement_feature_definitions.xlsx
     if feature_key in feat_mapping:
         serial_id = feat_mapping[feature_key]
         return serial_id + serial_offset, False
@@ -244,7 +238,6 @@ def map_feature_to_col_idx(feat_name, feat_mapping, relaxed_mapping, serial_offs
         serial_id = relaxed_mapping[relaxed_key]
         return serial_id + serial_offset, False
 
-    # Check direct column name matches in all_trimmed.csv
     column_lookup = {normalise_feature_name(col): idx for idx, col in enumerate(df_columns)}
     if feature_key in column_lookup:
         col_idx = column_lookup[feature_key]
@@ -294,23 +287,19 @@ def extract_subject_records(csv_path, selected_features_dict, feat_mapping, rela
             f"Columns insufficient: expected at least 166, got {len(df.columns)} in {csv_path}"
         )
 
-    # Demographic columns 6-10 (0-based indices 5:10: Height, Weight, BMI, Gender, Age)
     demo_indices = [5, 6, 7, 8, 9]
     signal_indices = list(range(10, 166))
     df_clean = df.copy()
 
-    # Map column positions to actual column names to prevent index-string confusion
     demo_cols = [df_clean.columns[i] for i in demo_indices]
     signal_cols = [df_clean.columns[i] for i in signal_indices]
     sbp_col, dbp_col = identify_bp_columns(df_clean)
 
-    # Encode Gender via column name assignment to safely cast int64 column to float64
     gender_col = df_clean.columns[8]
     df_clean[gender_col] = (
         df_clean[gender_col].apply(encode_gender).astype(float)
     )
 
-    # Safely convert demographic (preserving Age decimals), signal, and BP columns to float
     target_cols = list(
         dict.fromkeys(demo_cols + signal_cols + [sbp_col, dbp_col])
     )
@@ -323,14 +312,11 @@ def extract_subject_records(csv_path, selected_features_dict, feat_mapping, rela
           .fillna(0.0)
       )
 
-    # Static demographic vector replicated across delta records
     static_demo = df_clean.iloc[0, demo_indices].values.astype(float)
 
-    # Baseline values (row 0)
     base_signal = df_clean.iloc[0, signal_indices].values.astype(float)
     base_sbp = float(df_clean.iloc[0][sbp_col])
     base_dbp = float(df_clean.iloc[0][dbp_col])
-    # Compute MAP strictly according to MAP = (SBP + 2 * DBP) / 3
     base_map = (base_sbp + 2.0 * base_dbp) / 3.0
 
     col_names = list(df_clean.columns)
@@ -339,24 +325,20 @@ def extract_subject_records(csv_path, selected_features_dict, feat_mapping, rela
     )
 
     records = []
-    # Generate 4 delta records from rows 1 to 4
     for idx in range(1, 5):
         cur_row = df_clean.iloc[idx]
         cur_sbp = float(cur_row[sbp_col])
         cur_dbp = float(cur_row[dbp_col])
-        # Compute MAP strictly according to MAP = (SBP + 2 * DBP) / 3
         cur_map = (cur_sbp + 2.0 * cur_dbp) / 3.0
 
         delta_sbp = cur_sbp - base_sbp
         delta_dbp = cur_dbp - base_dbp
         delta_map = cur_map - base_map
 
-        # Full 161 features: 156 delta physiological features + 5 static demographic features
         cur_signal = cur_row.iloc[signal_indices].values.astype(float)
         delta_signal = cur_signal - base_signal
         full_feat = np.concatenate([delta_signal, static_demo])
 
-        # Selected features: delta for physiological, static for demographic
         feat_vectors = {}
         for target_key, col_info_list in target_feat_indices.items():
             feature_vector = []
@@ -406,11 +388,236 @@ def calculate_metrics(y_true, y_pred):
     return mae, rmse, r, r2
 
 
-def plot_bp_regression_scatters(df_samples, output_dir):
-  """Generate high-resolution (300 DPI) regression scatter plots for SBP, DBP, and MAP.
+def get_sig_label(p_val):
+    if pd.isna(p_val):
+        return "ns"
+    if p_val < 0.001:
+        return "***"
+    elif p_val < 0.01:
+        return "**"
+    elif p_val < 0.05:
+        return "*"
+    return "ns"
 
-  Left subplot: All 161 Features; Right subplot: Stage 2 Selected Features.
-  """
+
+def corrected_resampled_ttest(fold_diffs, n_train, n_test):
+    k = len(fold_diffs)
+    diffs = np.asarray(fold_diffs, dtype=float)
+    mean_diff = float(np.mean(diffs))
+    var_diff = float(np.var(diffs, ddof=1)) if k > 1 else 0.0
+    if var_diff == 0.0:
+        return 0.0, 1.0
+    se_corr = np.sqrt((1.0 / k + float(n_test) / float(n_train)) * var_diff)
+    t_stat = mean_diff / se_corr
+    p_val = float(2.0 * (1.0 - student_t.cdf(abs(t_stat), df=k - 1)))
+    return float(t_stat), p_val
+
+
+def evaluate_mae_significance_and_ci(df_samples, df_folds, n_train, n_test, n_boot=1000, seed=42):
+    rng = np.random.default_rng(seed)
+    stats_dict = {}
+
+    for target in ["SBP", "DBP", "MAP"]:
+        sub_old = (
+            df_samples[
+                (df_samples["Target_BP"] == target)
+                & (df_samples["Input_Feature_Set"] == "All_161_Features")
+            ]
+            .sort_values(by=["Fold", "Subject_ID", "Record_Idx"])
+            .reset_index(drop=True)
+        )
+        sub_new = (
+            df_samples[
+                (df_samples["Target_BP"] == target)
+                & (df_samples["Input_Feature_Set"] == "Stage2_Selected")
+            ]
+            .sort_values(by=["Fold", "Subject_ID", "Record_Idx"])
+            .reset_index(drop=True)
+        )
+
+        ae_old = np.abs(sub_old["True_BP"].values.astype(float) - sub_old["Pred_BP"].values.astype(float))
+        ae_new = np.abs(sub_new["True_BP"].values.astype(float) - sub_new["Pred_BP"].values.astype(float))
+        delta_ae = ae_old - ae_new
+
+        _, sw_p = shapiro(delta_ae)
+        is_normal = bool(sw_p > 0.05)
+
+        if is_normal:
+            _, sample_p = ttest_rel(ae_old, ae_new)
+            sample_test_name = "Paired t-test"
+        else:
+            _, sample_p = wilcoxon(ae_old, ae_new)
+            sample_test_name = "Wilcoxon Signed-Rank Test"
+        sample_p = float(sample_p)
+
+        fold_old = (
+            df_folds[
+                (df_folds["Target_BP"] == target)
+                & (df_folds["Input_Feature_Set"] == "All_161_Features")
+            ]
+            .sort_values(by="Fold")["MAE"]
+            .values.astype(float)
+        )
+        fold_new = (
+            df_folds[
+                (df_folds["Target_BP"] == target)
+                & (df_folds["Input_Feature_Set"] == "Stage2_Selected")
+            ]
+            .sort_values(by="Fold")["MAE"]
+            .values.astype(float)
+        )
+        fold_diffs = fold_old - fold_new
+        _, corr_t_p = corrected_resampled_ttest(fold_diffs, n_train=n_train, n_test=n_test)
+
+        n_samples = len(delta_ae)
+        boot_means = np.empty(n_boot, dtype=float)
+        for b in range(n_boot):
+            idx = rng.integers(0, n_samples, size=n_samples)
+            boot_means[b] = np.mean(delta_ae[idx])
+
+        ci_low, ci_high = np.percentile(boot_means, [2.5, 97.5])
+        delta_mae_mean = float(np.mean(delta_ae))
+
+        stats_dict[target] = {
+            "Shapiro_p": round(float(sw_p), 6),
+            "Sample_Test": sample_test_name,
+            "Sample_p_value": round(sample_p, 6),
+            "Sample_Sig": get_sig_label(sample_p),
+            "Corrected_t_p_value": round(corr_t_p, 6),
+            "Corrected_t_Sig": get_sig_label(corr_t_p),
+            "p_value": round(sample_p, 6),
+            "Delta_MAE_95CI": f"{delta_mae_mean:.4f} [{ci_low:.4f}, {ci_high:.4f}]",
+            "ci_low": float(ci_low),
+            "ci_high": float(ci_high),
+            "delta_mae_mean": delta_mae_mean,
+        }
+
+    return stats_dict
+
+
+def evaluate_naive_baselines(subjects, subject_data, kf):
+    """Evaluate 'Predicting zero change' and 'Predicting per-posture mean' baselines."""
+    target_configs = [
+        ("SBP", "delta_sbp", "base_sbp", "cur_sbp"),
+        ("DBP", "delta_dbp", "base_dbp", "cur_dbp"),
+        ("MAP", "delta_map", "base_map", "cur_map"),
+    ]
+    baseline_methods = ["Predicting_Zero_Change", "Predicting_Per_Posture_Mean"]
+
+    fold_records = []
+    pooled_records = {
+        (m, t): {"dt_true": [], "dt_pred": [], "abs_true": [], "abs_pred": []}
+        for m in baseline_methods
+        for t, _, _, _ in target_configs
+    }
+
+    for fold, (train_idx, test_idx) in enumerate(kf.split(subjects), 1):
+        train_subs = [subjects[i] for i in train_idx]
+        test_subs = [subjects[i] for i in test_idx]
+        train_recs = [rec for s in train_subs for rec in subject_data[s]]
+        test_recs = [rec for s in test_subs for rec in subject_data[s]]
+
+        for target_bp, delta_key, base_key, abs_key in target_configs:
+            y_test_delta = np.array([r[delta_key] for r in test_recs], dtype=float)
+            base_test = np.array([r[base_key] for r in test_recs], dtype=float)
+            abs_test = np.array([r[abs_key] for r in test_recs], dtype=float)
+
+            # 1. Predicting zero change (delta = 0)
+            pred_delta_zero = np.zeros_like(y_test_delta)
+            pred_abs_zero = base_test + pred_delta_zero
+
+            # 2. Predicting per-posture mean (computed from training fold)
+            posture_means = {
+                idx: float(np.mean([r[delta_key] for r in train_recs if r["record_idx"] == idx]))
+                for idx in range(1, 5)
+            }
+            pred_delta_posture = np.array([posture_means[r["record_idx"]] for r in test_recs], dtype=float)
+            pred_abs_posture = base_test + pred_delta_posture
+
+            for method_name, dt_pred, abs_pred in [
+                ("Predicting_Zero_Change", pred_delta_zero, pred_abs_zero),
+                ("Predicting_Per_Posture_Mean", pred_delta_posture, pred_abs_posture),
+            ]:
+                mae, rmse, r_delta, r2_delta = calculate_metrics(y_test_delta, dt_pred)
+                _, _, r_abs, r2_abs = calculate_metrics(abs_test, abs_pred)
+                err_abs = abs_pred - abs_test
+                sd_err = float(np.std(err_abs, ddof=1)) if len(err_abs) > 1 else 0.0
+
+                fold_records.append({
+                    "Fold": fold,
+                    "Baseline_Method": method_name,
+                    "Target_BP": target_bp,
+                    "MAE": mae,
+                    "RMSE": rmse,
+                    "Delta_r": r_delta,
+                    "Delta_R2": r2_delta,
+                    "Abs_r": r_abs,
+                    "Abs_R2": r2_abs,
+                    "BP_std": float(np.std(abs_pred)),
+                    "BP_sd": sd_err,
+                })
+
+                pooled_records[(method_name, target_bp)]["dt_true"].extend(y_test_delta)
+                pooled_records[(method_name, target_bp)]["dt_pred"].extend(dt_pred)
+                pooled_records[(method_name, target_bp)]["abs_true"].extend(abs_test)
+                pooled_records[(method_name, target_bp)]["abs_pred"].extend(abs_pred)
+
+    df_base_folds = pd.DataFrame(fold_records)
+    baseline_summary_rows = []
+
+    for method_name in baseline_methods:
+        for target_bp, delta_key, base_key, abs_key in target_configs:
+            grp = df_base_folds[
+                (df_base_folds["Baseline_Method"] == method_name)
+                & (df_base_folds["Target_BP"] == target_bp)
+            ]
+            p_data = pooled_records[(method_name, target_bp)]
+            dt_t = np.array(p_data["dt_true"], dtype=float)
+            dt_p = np.array(p_data["dt_pred"], dtype=float)
+            ab_t = np.array(p_data["abs_true"], dtype=float)
+            ab_p = np.array(p_data["abs_pred"], dtype=float)
+
+            # Out-of-fold pooled metrics
+            p_mae, p_rmse, p_r_dt, p_r2_dt = calculate_metrics(dt_t, dt_p)
+            _, _, p_r_ab, p_r2_ab = calculate_metrics(ab_t, ab_p)
+
+            # In-sample whole-dataset posture mean (exact match to Table 2 theoretical formula)
+            all_recs = [rec for s in subjects for rec in subject_data[s]]
+            all_dt_true = np.array([r[delta_key] for r in all_recs], dtype=float)
+            if method_name == "Predicting_Zero_Change":
+                exact_dt_pred = np.zeros_like(all_dt_true)
+            else:
+                global_p_means = {
+                    idx: float(np.mean([r[delta_key] for r in all_recs if r["record_idx"] == idx]))
+                    for idx in range(1, 5)
+                }
+                exact_dt_pred = np.array([global_p_means[r["record_idx"]] for r in all_recs], dtype=float)
+            exact_rmse = float(np.sqrt(mean_squared_error(all_dt_true, exact_dt_pred)))
+
+            baseline_summary_rows.append({
+                "Baseline_Method": method_name,
+                "Target_BP": target_bp,
+                "MAE_Mean": round(grp["MAE"].mean(), 4),
+                "MAE_Std": round(grp["MAE"].std(), 4),
+                "RMSE_Mean": round(grp["RMSE"].mean(), 4),
+                "RMSE_Std": round(grp["RMSE"].std(), 4),
+                "Pooled_RMSE": round(p_rmse, 4),
+                "Table2_Exact_RMSE": round(exact_rmse, 4),
+                "Delta_r_Mean": round(grp["Delta_r"].mean(), 4),
+                "Delta_R2_Mean": round(grp["Delta_R2"].mean(), 4),
+                "Pooled_Delta_R2": round(p_r2_dt, 4),
+                "Abs_r_Mean": round(grp["Abs_r"].mean(), 4),
+                "Abs_R2_Mean": round(grp["Abs_R2"].mean(), 4),
+                "Pooled_Abs_R2": round(p_r2_ab, 4),
+                "BP_std": round(grp["BP_std"].mean(), 4),
+                "BP_sd": round(grp["BP_sd"].mean(), 4),
+            })
+
+    return pd.DataFrame(baseline_summary_rows)
+
+
+def plot_bp_regression_scatters(df_samples, output_dir):
+  """Generate high-resolution (300 DPI) regression scatter plots for SBP, DBP, and MAP."""
   os.makedirs(output_dir, exist_ok=True)
   bp_targets = ["SBP", "DBP", "MAP"]
   feature_subsets = [
@@ -432,7 +639,6 @@ def plot_bp_regression_scatters(df_samples, output_dir):
         fontweight="bold",
     )
 
-    # Determine unified axis limits for both subplots to maintain equal aspect ratio
     val_min = min(sub_df["True_BP"].min(), sub_df["Pred_BP"].min()) - 5.0
     val_max = max(sub_df["True_BP"].max(), sub_df["Pred_BP"].max()) + 5.0
 
@@ -443,7 +649,6 @@ def plot_bp_regression_scatters(df_samples, output_dir):
 
       mae, rmse, r, r2 = calculate_metrics(y_true, y_pred)
 
-      # Scatter plot of True BP vs Predicted BP
       pt_color = "#1f77b4" if "161" in feat_key else "#2ca02c"
       ax.scatter(
           y_true,
@@ -455,7 +660,6 @@ def plot_bp_regression_scatters(df_samples, output_dir):
           label="Samples",
       )
 
-      # 45-degree identity reference line (y = x)
       lims = [val_min, val_max]
       ax.plot(
           lims,
@@ -466,7 +670,6 @@ def plot_bp_regression_scatters(df_samples, output_dir):
           label="Identity line (y = x)",
       )
 
-      # Linear regression trendline
       if len(y_true) > 1:
         slope, intercept = np.polyfit(y_true, y_pred, 1)
         x_trend = np.linspace(val_min, val_max, 100)
@@ -487,7 +690,6 @@ def plot_bp_regression_scatters(df_samples, output_dir):
       ax.set_ylabel(f"Predicted {target} (mmHg)", fontsize=16)
       ax.grid(True, linestyle=":", alpha=0.6)
 
-      # Metric annotation text box
       metric_text = (
           f"MAE = {mae:.2f} mmHg\n"
           f"RMSE = {rmse:.2f} mmHg\n"
@@ -518,6 +720,128 @@ def plot_bp_regression_scatters(df_samples, output_dir):
     plt.savefig(output_fig_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved 300 DPI regression scatter plot to: {output_fig_path}")
+
+
+def format_math_minus(val, decimals=2):
+    s = f"{val:.{decimals}f}"
+    return s.replace("-", "\u2212")
+
+
+def plot_bland_altman_figures(df_samples, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    bp_targets = ["SBP", "DBP", "MAP"]
+    xlim_map = {
+        "SBP": (60, 160),
+        "DBP": (40, 120),
+        "MAP": (40, 120),
+    }
+    feature_configs = [
+        ("All_161_Features", "All 161 Features", "bland_altman_All_161_Features.png", "#1f77b4"),
+        ("Stage2_Selected", "Stage 2 Selected Features", "bland_altman_Stage2_Selected_Features.png", "#2ca02c"),
+    ]
+
+    tick_formatter = FuncFormatter(
+        lambda x, pos: f"{int(x)}".replace("-", "\u2212")
+        if np.isclose(x, round(x))
+        else f"{x:g}".replace("-", "\u2212")
+    )
+
+    for feat_key, feat_title, filename, pt_color in feature_configs:
+        fig, axes = plt.subplots(1, 3, figsize=(24, 7.5))
+
+        for ax, target in zip(axes, bp_targets):
+            sub_df = df_samples[
+                (df_samples["Target_BP"] == target)
+                & (df_samples["Input_Feature_Set"] == feat_key)
+            ]
+            y_true = sub_df["True_BP"].values.astype(float)
+            y_pred = sub_df["Pred_BP"].values.astype(float)
+            n_pts = len(y_true)
+
+            mean_bp = (y_true + y_pred) / 2.0
+            diff_bp = y_pred - y_true
+
+            md = float(np.mean(diff_bp))
+            sd = float(np.std(diff_bp, ddof=1))
+            loa_upper = md + 1.96 * sd
+            loa_lower = md - 1.96 * sd
+
+            ax.scatter(
+                mean_bp,
+                diff_bp,
+                alpha=0.65,
+                edgecolors="none",
+                color=pt_color,
+                s=55,
+            )
+
+            ax.axhline(md, color="#d62728", linestyle="-", linewidth=2.2)
+            ax.axhline(loa_upper, color="#333333", linestyle="--", linewidth=2.0)
+            ax.axhline(loa_lower, color="#333333", linestyle="--", linewidth=2.0)
+
+            ax.set_xlim(xlim_map[target])
+            ax.set_ylim(-60, 60)
+
+            ax.xaxis.set_major_formatter(tick_formatter)
+            ax.yaxis.set_major_formatter(tick_formatter)
+
+            x_text = ax.get_xlim()[1] - (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.03
+            y_offset = 120.0 * 0.025
+
+            ax.text(
+                x_text,
+                loa_upper + y_offset,
+                f"+1.96 SD: {format_math_minus(loa_upper)}",
+                ha="right",
+                va="bottom",
+                fontsize=24,
+                fontname="Arial",
+                color="#333333",
+            )
+            ax.text(
+                x_text,
+                md + y_offset,
+                f"Mean: {format_math_minus(md)}",
+                ha="right",
+                va="bottom",
+                fontsize=24,
+                fontname="Arial",
+                color="#d62728",
+            )
+            ax.text(
+                x_text,
+                loa_lower - y_offset,
+                f"\u22121.96 SD: {format_math_minus(loa_lower)}",
+                ha="right",
+                va="top",
+                fontsize=24,
+                fontname="Arial",
+                color="#333333",
+            )
+
+            ax.text(
+                0.96,
+                0.94,
+                f"sample size $\\mathit{{n}}$ = {n_pts}",
+                transform=ax.transAxes,
+                ha="right",
+                va="top",
+                fontsize=24,
+                fontname="Arial",
+                color="#000000",
+            )
+
+            ax.set_title(f"{target}", fontsize=24, fontweight="bold", fontname="Arial")
+            ax.set_xlabel(f"Mean of Reference and Predicted {target} (mmHg)", fontsize=24, fontname="Arial")
+            ax.set_ylabel(f"Difference (Pred \u2212 Ref {target}) (mmHg)", fontsize=24, fontname="Arial")
+            ax.tick_params(axis="both", which="both", direction="in", labelsize=24)
+            ax.grid(True, linestyle=":", alpha=0.6)
+
+        plt.tight_layout()
+        out_path = os.path.join(output_dir, filename)
+        plt.savefig(out_path, dpi=300, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved 300 DPI Bland-Altman plot to: {out_path}")
 
 
 def main():
@@ -562,7 +886,6 @@ def main():
         if records and len(records) == 4:
             subject_data[folder_name] = records
 
-    # Sort subjects to guarantee deterministic fold splits
     subjects = sorted(subject_data.keys())
     if len(subjects) < 5:
         raise ValueError("At least five valid subjects are required for 5-fold cross-validation")
@@ -580,6 +903,9 @@ def main():
 
     fold_results = []
     sample_predictions = []
+    n_train_samples = 0
+    n_test_samples = 0
+
     for fold, (train_idx, test_idx) in enumerate(kf.split(subjects), 1):
         train_subs = [subjects[i] for i in train_idx]
         test_subs = [subjects[i] for i in test_idx]
@@ -588,6 +914,8 @@ def main():
             (subject, record) for subject in test_subs for record in subject_data[subject]
         ]
         test_records = [item[1] for item in test_records_with_meta]
+        n_train_samples = len(train_records)
+        n_test_samples = len(test_records)
 
         for feat_label, target_bp, feat_key, delta_key, base_key, abs_key in eval_configurations:
             X_train = np.array([record[feat_key] for record in train_records])
@@ -632,8 +960,19 @@ def main():
 
     df_folds = pd.DataFrame(fold_results)
     df_samples = pd.DataFrame(sample_predictions)
+
+    mae_stats = evaluate_mae_significance_and_ci(
+        df_samples=df_samples,
+        df_folds=df_folds,
+        n_train=n_train_samples,
+        n_test=n_test_samples,
+        n_boot=1000,
+        seed=RANDOM_STATE,
+    )
+
     summary_list = []
     for (feat_label, target_bp), group in df_folds.groupby(["Input_Feature_Set", "Target_BP"], sort=False):
+        t_stat_info = mae_stats[target_bp]
         summary_list.append({
             "Input_Feature_Set": feat_label, "Target_BP": target_bp,
             "Feature_Count": int(group["Feature_Count"].iloc[0]),
@@ -644,6 +983,13 @@ def main():
             "Abs_r_Mean": round(group["Abs_r"].mean(), 4), "Abs_r_Std": round(group["Abs_r"].std(), 4),
             "Abs_R2_Mean": round(group["Abs_R2"].mean(), 4), "Abs_R2_Std": round(group["Abs_R2"].std(), 4),
             "BP_std": round(group["BP_std"].mean(), 4), "BP_sd": round(group["BP_sd"].mean(), 4),
+            "Shapiro_p": t_stat_info["Shapiro_p"],
+            "Stat_Test": t_stat_info["Sample_Test"],
+            "p_value": t_stat_info["p_value"],
+            "Sig_Level": t_stat_info["Sample_Sig"],
+            "Corrected_Resampled_t_p": t_stat_info["Corrected_t_p_value"],
+            "Corrected_t_Sig": t_stat_info["Corrected_t_Sig"],
+            "Delta_MAE_95CI": t_stat_info["Delta_MAE_95CI"],
         })
     df_summary = pd.DataFrame(summary_list)
 
@@ -684,6 +1030,9 @@ def main():
       })
     df_subject_summary = pd.DataFrame(subject_summary_list)
 
+    # Evaluate naive baselines (Predicting zero change & Predicting per-posture mean)
+    df_baseline_summary = evaluate_naive_baselines(subjects, subject_data, kf)
+
     output_fold_path = os.path.join(
         ANALYSIS_DIR, "cv_5fold_prediction_results.csv"
     )
@@ -694,34 +1043,31 @@ def main():
         ANALYSIS_DIR, "cv_sample_predictions_detail.csv"
     )
 
-    df_folds.to_csv(output_fold_path, index=False, encoding="utf-8-sig")
+    df_folds.to_csv(output_fold_path, index=False, encoding="utf-8-sig") 
     df_samples.to_csv(output_sample_path, index=False, encoding="utf-8-sig")
 
-    # Save summary metrics: fold-level first, then a separator line, followed by subject-level metrics
+    # Save summary metrics: fold-level first, then subject-level, followed by naive baselines
     with open(output_summary_path, "w", encoding="utf-8-sig") as f:
-      df_summary.to_csv(f, index=False)
-      f.write(
-          "\n--------------------------------------------------------------------------------\n"
-      )
-      f.write(
-          "# Within-Subject Averaged Metrics (Subject-Level Pearson r and"
-          " R2)\n"
-      )
-      df_subject_summary.to_csv(f, index=False)
+        df_summary.to_csv(f, index=False)
+        f.write(
+            "\n--------------------------------------------------------------------------------\n"
+        )
+        f.write(
+            "# Within-Subject Averaged Metrics (Subject-Level Pearson r and"
+            " R2)\n"
+        )
+        df_subject_summary.to_csv(f, index=False)
+        f.write(
+            "\n--------------------------------------------------------------------------------\n"
+        )
+        f.write(
+            "# Naive Baselines (Predicting Zero Change & Predicting Per-Posture Mean)\n"
+        )
+        df_baseline_summary.to_csv(f, index=False)
 
-    # Generate and save 300 DPI regression scatter plots for SBP, DBP, and MAP
     plot_bp_regression_scatters(df_samples, ANALYSIS_DIR)
-
-    print(f"\nSaved fold metrics to: {output_fold_path}")
-    print(f"Saved summary metrics to: {output_summary_path}")
-    print(f"Saved prediction details to: {output_sample_path}")
-    print("\n--- 5-Fold Cross Validation Summary (Fold-Level) ---")
-    print(df_summary.to_string(index=False))
-    print(
-        "\n--------------------------------------------------------------------------------"
-    )
-    print("--- Within-Subject Averaged Metrics Summary (Subject-Level) ---")
-    print(df_subject_summary.to_string(index=False))
+    plot_bland_altman_figures(df_samples, ANALYSIS_DIR)
+    print("All processing and plotting completed successfully.")
 
 
 if __name__ == "__main__":

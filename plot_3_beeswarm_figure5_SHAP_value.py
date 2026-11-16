@@ -3,6 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import numpy as np
+import openpyxl
 import pandas as pd
 import shap
 
@@ -10,6 +11,45 @@ import shap
 plt.rcParams["font.sans-serif"] = ["Arial"]
 plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["axes.unicode_minus"] = True  
+plt.rcParams["mathtext.fontset"] = "custom"
+plt.rcParams["mathtext.rm"] = "Arial"
+plt.rcParams["mathtext.it"] = "Arial:italic"
+plt.rcParams["mathtext.bf"] = "Arial:bold"
+
+
+def load_xlsx_feature_list(xlsx_path: Path) -> list[str]:
+    wb = openpyxl.load_workbook(xlsx_path, rich_text=True)
+    ws = wb.active
+    feat_list = []
+    for row in range(1, ws.max_row + 1):
+        cell = ws.cell(row=row, column=2)
+        val = cell.value
+        if val is None:
+            continue
+        cell_italic = bool(cell.font and cell.font.italic)
+        if isinstance(val, str):
+            text = f"$\\mathit{{{val}}}$" if cell_italic else val
+        else:
+            parts = []
+            for part in val:
+                if isinstance(part, str):
+                    parts.append(f"$\\mathit{{{part}}}$" if cell_italic else part)
+                else:
+                    t = part.text
+                    sub = part.font and part.font.vertAlign == "subscript"
+                    sup = part.font and part.font.vertAlign == "superscript"
+                    ita = bool(part.font and part.font.i)
+                    if sub:
+                        parts.append(f"$_{{\\mathrm{{{t}}}}}$")
+                    elif sup:
+                        parts.append(f"$^{{\\mathrm{{{t}}}}}$")
+                    elif ita:
+                        parts.append(f"$\\mathit{{{t}}}$")
+                    else:
+                        parts.append(t)
+            text = "".join(parts)
+        feat_list.append(text)
+    return feat_list
 
 
 def format_sbp_ticks(x, pos):
@@ -41,29 +81,6 @@ def render_beeswarm_plot(
     fig = plt.gcf()
     ax = plt.gca()
 
-    
-
-    
-    ax.set_xlabel(
-        f"SHAP value (impact on ∆{target}, mmHg)",
-        fontsize=18,
-        fontweight="bold",
-        labelpad=10,
-    )
-
-    
-    ax.tick_params(axis="x", labelsize=18)
-    ax.tick_params(axis="y", labelsize=18)
-
-    
-    if target == "SBP":
-        ax.xaxis.set_major_formatter(FuncFormatter(format_sbp_ticks))
-    else:
-        ax.xaxis.set_major_formatter(
-            FuncFormatter(lambda x, pos: f"{x:g}".replace("-", "\u2212"))
-        )
-
-    
     colorbar_ax = None
     for a in fig.axes:
         if a is not ax and a.get_ylabel() != "":
@@ -71,16 +88,57 @@ def render_beeswarm_plot(
             break
 
     if target == "SBP":
-        
         if colorbar_ax is not None:
             colorbar_ax.remove()
-    else:
-        
-        if colorbar_ax is not None:
-            colorbar_ax.set_ylabel("Feature value", fontsize=18, fontweight="bold", labelpad=10)
-            colorbar_ax.tick_params(labelsize=18)
+            colorbar_ax = None
+
+    true_yticklabels = [t.get_text() for t in ax.get_yticklabels()]
+    ax.set_yticklabels(["r_OS_OO_ppg"] * len(true_yticklabels))
+    ax.set_xlabel(
+        f"SHAP value (impact on ∆{target}, mmHg)",
+        fontsize=18,
+        fontweight="bold",
+        labelpad=10,
+    )
+    ax.tick_params(axis="x", labelsize=18)
+    ax.tick_params(axis="y", labelsize=18)
+    if colorbar_ax is not None:
+        colorbar_ax.set_ylabel("Feature value", fontsize=18, fontweight="bold", labelpad=10)
+        colorbar_ax.tick_params(labelsize=18)
 
     plt.tight_layout()
+    fig.canvas.draw()
+
+    orig_ax_pos = ax.get_position().bounds
+    orig_cb_pos = colorbar_ax.get_position().bounds if colorbar_ax is not None else None
+    orig_xlim = ax.get_xlim()
+    orig_xticks = [t for t in ax.get_xticks() if orig_xlim[0] - 1e-9 <= t <= orig_xlim[1] + 1e-9]
+
+    ax.set_yticklabels(true_yticklabels)
+    ax.set_xticks(orig_xticks)
+    ax.set_xlim(orig_xlim)
+    ax.set_xlabel(
+        f"SHAP value (impact on ∆{target}, mmHg)",
+        fontsize=22,
+        fontweight="bold",
+        labelpad=10,
+    )
+    ax.tick_params(axis="x", labelsize=22)
+    ax.tick_params(axis="y", labelsize=22)
+
+    if target == "SBP":
+        ax.xaxis.set_major_formatter(FuncFormatter(format_sbp_ticks))
+    else:
+        ax.xaxis.set_major_formatter(
+            FuncFormatter(lambda x, pos: f"{x:g}".replace("-", "\u2212"))
+        )
+
+    ax.set_position(orig_ax_pos)
+    if colorbar_ax is not None and orig_cb_pos is not None:
+        colorbar_ax.set_ylabel("Feature value", fontsize=22, fontweight="bold", labelpad=10)
+        colorbar_ax.tick_params(labelsize=22)
+        colorbar_ax.set_position(orig_cb_pos)
+
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Saved: {out_path.resolve()} (300 DPI)")
@@ -119,14 +177,14 @@ def main():
         Path(args.matrix_csv)
         if args.matrix_csv
         else Path(
-            f"{target}_{n_total_features}_features_SHAP_analysis_5fold_CV_feature_and_SHAP_matrix.csv"
+            f"{target}_{n_total_features}_features_SHAP_analysis_5fold_CV_Finnegan_feature_and_SHAP_matrix.csv"
         )
     )
     summary_csv_path = (
         Path(args.summary_csv)
         if args.summary_csv
         else Path(
-            f"{target}_{n_total_features}_features_SHAP_analysis_5fold_CV_SHAP_feature_summary.csv"
+            f"{target}_{n_total_features}_features_SHAP_analysis_5fold_CV_Finnegan_SHAP_feature_summary.csv"
         )
     )
 
@@ -164,7 +222,7 @@ def main():
     if summary_csv_path.exists():
         print(f"Aligning feature order with summary: {summary_csv_path.resolve()}")
         df_summary = pd.read_csv(summary_csv_path)
-        sorted_feature_names = df_summary["feature_name"].tolist()
+        sorted_feature_names = [str(f).strip() for f in df_summary["feature_name"].tolist()]
 
         X_mat = df_feat[sorted_feature_names].to_numpy(dtype=float)
         shap_mat = df_shap[sorted_feature_names].to_numpy(dtype=float)
@@ -172,10 +230,21 @@ def main():
         order_scores = df_summary["mean_abs_shap_5fold"].to_numpy(dtype=float)
     else:
         print("Summary CSV not found. Using default column order.")
-        feature_names = feature_cols
-        X_mat = df_feat[feature_names].to_numpy(dtype=float)
-        shap_mat = df_shap[feature_names].to_numpy(dtype=float)
+        feature_names = [str(c).strip() for c in feature_cols]
+        X_mat = df_feat[feature_cols].to_numpy(dtype=float)
+        shap_mat = df_shap[feature_cols].to_numpy(dtype=float)
         order_scores = np.mean(np.abs(shap_mat), axis=0)
+
+    xlsx_path = Path(__file__).resolve().parent / "supplement_feature_definitions.xlsx"
+    if not xlsx_path.exists():
+        xlsx_path = Path("supplement_feature_definitions.xlsx")
+    if xlsx_path.exists():
+        xlsx_feat_list = load_xlsx_feature_list(xlsx_path)
+        csv_col_map = {}
+        for idx, col_name in enumerate(feature_cols[: len(xlsx_feat_list)]):
+            csv_col_map[str(col_name).strip()] = xlsx_feat_list[idx]
+            csv_col_map[str(idx + 1)] = xlsx_feat_list[idx]
+        feature_names = [csv_col_map.get(str(f).strip(), str(f).strip()) for f in feature_names]
 
     print(f"Parsed {X_mat.shape[0]} samples across {len(feature_names)} features.")
 

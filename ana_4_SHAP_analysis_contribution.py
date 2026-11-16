@@ -647,7 +647,7 @@ def normalize_ranks_descending(values: np.ndarray) -> np.ndarray:
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            "subject-level 5-fold SHAP analysis with "
+            "Finnegan-style subject-level 5-fold SHAP analysis with "
             "156 delta morphological features + 5 demographic features."
         )
     )
@@ -720,7 +720,7 @@ def main():
         if args.out_txt
         else Path(
             f"{target}_161_features_"
-            f"SHAP_analysis_5fold_CV.txt"
+            f"SHAP_analysis_5fold_CV_Finnegan.txt"
         )
     )
 
@@ -957,6 +957,7 @@ def main():
 
         # ---------------------------------------------------------------------
         # 3C. PART B: SHAP feature importance on TRAINING data
+        #     This follows the Finnegan-style analysis.
         # ---------------------------------------------------------------------
         print(
             f"Fold {fold_no}: "
@@ -1254,7 +1255,7 @@ def main():
 
     lines.append(SEP)
     lines.append(
-        f"5-FOLD SUBJECT-LEVEL SHAP ANALYSIS FOR Δ{target}"
+        f"FINNEGAN-STYLE 5-FOLD SUBJECT-LEVEL SHAP ANALYSIS FOR Δ{target}"
     )
     lines.append(SEP)
     lines.append(
@@ -1532,7 +1533,7 @@ def main():
     lines.append("PART B. SHAP FEATURE IMPORTANCE")
     lines.append(SEP)
     lines.append(
-        "TreeSHAP is calculated "
+        "Following the Finnegan-style procedure, TreeSHAP is calculated "
         "on the TRAINING samples of each fold."
     )
     lines.append(
@@ -1725,6 +1726,8 @@ def main():
 
     # -------------------------------------------------------------------------
     # 8. Four requested machine-readable CSV outputs.
+    #
+    # No CSV-column-position field is included.
     # -------------------------------------------------------------------------
     output_stem = out_txt_path.with_suffix("")
 

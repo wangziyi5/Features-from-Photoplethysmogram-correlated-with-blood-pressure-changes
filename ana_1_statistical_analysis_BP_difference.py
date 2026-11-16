@@ -19,8 +19,18 @@ def format_sci(val):
     exp_super = exp_str.translate(superscript_map)
     return f"{base} × 10{exp_super}"
 
+def fmt_num(val, fmt=".4f"):
+    if pd.isna(val):
+        return "NaN"
+    return f"{val:{fmt}}".replace('-', '−')
+
+def fmt_sci_csv(val):
+    if pd.isna(val):
+        return "NaN"
+    return f"{val:.4e}".replace('-', '−')
+
 def main():
-    base_dir = Path("/Users/ziyiwang/Documents/Work_continuous_BP_monitoring/OUTPUT")
+    base_dir = Path("/Users/ziyiwang/Documents/Project_2026_month1_6/Work_260223_continuous_BP_monitoring/OUTPUT")
     output_dir = Path(__file__).resolve().parent if "__file__" in locals() else Path.cwd()
     
     exclude_dirs = {
@@ -76,9 +86,16 @@ def main():
     
     master_excel_rows = []
     excel_headers = [
-        "p1", "p2", "Mean_Diff", "Diff (p1 −p2), 95% CI",
+        "p1", "p2", "Test_Type", "Mean_Diff", "Diff (p1 −p2), 95% CI",
         "ES (Cohen's \"d\" )", "Statistical power",
         "p (raw)", "p (corrected)"
+    ]
+    csv_pairwise_headers = [
+        "Posture_A", "Posture_B", "Test_Type",
+        "Mean_Diff", "SD_Diff", 
+        "p_value", "p_bonferroni", 
+        "95%_CI_Lower", "95%_CI_Upper", 
+        "Cohens_dz", "Statistical_Power"
     ]
     
     with open(out_csv, 'w', newline='', encoding='utf-8-sig') as f:
@@ -118,8 +135,8 @@ def main():
             
             writer.writerow([
                 "Repeated-Measures ANOVA", 
-                f"{anova_stat:.4f}" if pd.notna(anova_stat) else "NaN", 
-                f"{anova_p:.4e}" if pd.notna(anova_p) else "NaN", 
+                fmt_num(anova_stat, ".4f") if pd.notna(anova_stat) else "NaN", 
+                fmt_sci_csv(anova_p) if pd.notna(anova_p) else "NaN", 
                 f"({anova_df1}, {anova_df2})" if pd.notna(anova_df1) else "NaN", 
                 "Met" if is_normal else "Violated", 
                 "Significant (Reject H0)" if pd.notna(anova_p) and anova_p < 0.05 else "Not Significant"
@@ -127,8 +144,8 @@ def main():
             
             writer.writerow([
                 "Friedman Test", 
-                f"{stat_f:.4f}", 
-                f"{p_f:.4e}", 
+                fmt_num(stat_f, ".4f"), 
+                fmt_sci_csv(p_f), 
                 f"{n_postures - 1}", 
                 "Non-parametric (N/A)", 
                 "Significant (Reject H0)" if p_f < 0.05 else "Not Significant"
@@ -136,19 +153,9 @@ def main():
             
             writer.writerow([])
             
-            writer.writerow([f"-------------------- {target_name} Posture Pairwise Comparisons (Post-hoc) --------------------"])
-            writer.writerow([
-                "Posture_A", "Posture_B", 
-                "Mean_Diff", "SD_Diff", 
-                "p_value", "p_bonferroni", 
-                "95%_CI_Lower", "95%_CI_Upper", 
-                "Cohens_dz", "Statistical_Power"
-            ])
             
-            if idx > 0:
-                master_excel_rows.append([""] * len(excel_headers))
-                master_excel_rows.append([""] * len(excel_headers))
-            master_excel_rows.append(excel_headers)
+            csv_rows_ttest, csv_rows_wilcoxon, csv_rows_cond = [], [], []
+            xls_rows_ttest, xls_rows_wilcoxon, xls_rows_cond = [], [], []
             
             for p_a, p_b in pairs:
                 vec_a = mat[:, p_a]
@@ -159,49 +166,127 @@ def main():
                 mean_diff = np.mean(diff)
                 std_diff = np.std(diff, ddof=1)
                 
-                _, p_val = stats.ttest_rel(vec_a, vec_b)
-                
-                p_bonf = min(p_val * num_comp, 1.0)
-                
                 sem = std_diff / np.sqrt(n)
-                ci_low, ci_high = stats.t.interval(0.95, n-1, loc=mean_diff, scale=sem)
-                
+                ci_low, ci_high = stats.t.interval(0.95, n - 1, loc=mean_diff, scale=sem)
                 cohen_d = mean_diff / std_diff if std_diff != 0 else np.nan
                 
                 if not np.isnan(cohen_d) and std_diff != 0:
                     power = TTestPower().solve_power(effect_size=abs(cohen_d), nobs=n, alpha=0.05, alternative='two-sided')
                 else:
                     power = np.nan
-                    
-                writer.writerow([
-                    posture_labels[p_a], 
-                    posture_labels[p_b], 
-                    f"{mean_diff:.4f}", 
-                    f"{std_diff:.4f}", 
-                    f"{p_val:.4e}", 
-                    f"{p_bonf:.4e}", 
-                    f"{ci_low:.4f}", 
-                    f"{ci_high:.4f}", 
-                    f"{cohen_d:.4f}", 
-                    f"{power:.4f}"
-                ])
+
+                
+                _, p_val_t = stats.ttest_rel(vec_a, vec_b)
+                p_bonf_t = min(p_val_t * num_comp, 1.0)
+                type_t = "Paired t-test"
+                
+                
+                _, p_val_w = stats.wilcoxon(vec_a, vec_b)
+                p_bonf_w = min(p_val_w * num_comp, 1.0)
+                type_w = "Wilcoxon signed-rank test"
+                
+                
+                _, p_diff_norm = stats.shapiro(diff)
+                if p_diff_norm >= 0.05:
+                    type_c = "Paired t-test"
+                    p_val_c = p_val_t
+                    p_bonf_c = p_bonf_t
+                else:
+                    type_c = "Wilcoxon signed-rank test"
+                    p_val_c = p_val_w
+                    p_bonf_c = p_bonf_w
                 
                 p1_val = posture_labels[p_a]
                 p2_val = posture_labels[p_b]
-                mean_diff_str = f"{mean_diff:.2f}".replace("-", "−")
-                ci_str = f"[{ci_low:.2f}, {ci_high:.2f}]".replace("-", "−")
-                es_str = f"{cohen_d:.3f}".replace("-", "−") if not np.isnan(cohen_d) else "NaN"
-                pow_str = f"{power:.3f}" if not np.isnan(power) else "NaN"
-                p_raw_str = format_sci(p_val)
-                p_bonf_str = format_sci(p_bonf)
                 
-                master_excel_rows.append([
-                    p1_val, p2_val, mean_diff_str, ci_str, 
-                    es_str, pow_str, p_raw_str, p_bonf_str
+                
+                m_csv = fmt_num(mean_diff, ".4f")
+                s_csv = fmt_num(std_diff, ".4f")
+                cil_csv = fmt_num(ci_low, ".4f")
+                cih_csv = fmt_num(ci_high, ".4f")
+                es_csv = fmt_num(cohen_d, ".4f")
+                pow_csv = fmt_num(power, ".4f")
+                
+                csv_rows_ttest.append([
+                    p1_val, p2_val, type_t, m_csv, s_csv,
+                    fmt_sci_csv(p_val_t), fmt_sci_csv(p_bonf_t),
+                    cil_csv, cih_csv, es_csv, pow_csv
+                ])
+                csv_rows_wilcoxon.append([
+                    p1_val, p2_val, type_w, m_csv, s_csv,
+                    fmt_sci_csv(p_val_w), fmt_sci_csv(p_bonf_w),
+                    cil_csv, cih_csv, es_csv, pow_csv
+                ])
+                csv_rows_cond.append([
+                    p1_val, p2_val, type_c, m_csv, s_csv,
+                    fmt_sci_csv(p_val_c), fmt_sci_csv(p_bonf_c),
+                    cil_csv, cih_csv, es_csv, pow_csv
                 ])
                 
+                
+                mean_diff_str = fmt_num(mean_diff, ".2f")
+                ci_str = f"[{fmt_num(ci_low, '.2f')}, {fmt_num(ci_high, '.2f')}]"
+                es_str = fmt_num(cohen_d, ".3f")
+                pow_str = fmt_num(power, ".3f")
+                
+                xls_rows_ttest.append([
+                    p1_val, p2_val, type_t, mean_diff_str, ci_str,
+                    es_str, pow_str, format_sci(p_val_t), format_sci(p_bonf_t)
+                ])
+                xls_rows_wilcoxon.append([
+                    p1_val, p2_val, type_w, mean_diff_str, ci_str,
+                    es_str, pow_str, format_sci(p_val_w), format_sci(p_bonf_w)
+                ])
+                xls_rows_cond.append([
+                    p1_val, p2_val, type_c, mean_diff_str, ci_str,
+                    es_str, pow_str, format_sci(p_val_c), format_sci(p_bonf_c)
+                ])
+            
+            
+            title_t = f"-------------------- {target_name} Posture Pairwise Comparisons (Post-hoc) [Paired t-test Only] --------------------"
+            title_w = f"-------------------- {target_name} Posture Pairwise Comparisons (Post-hoc) [Wilcoxon signed-rank test Only] --------------------"
+            title_c = f"-------------------- {target_name} Posture Pairwise Comparisons (Post-hoc) [Normality-Conditional Test] --------------------"
+            
+            
+            writer.writerow([title_t])
+            writer.writerow(csv_pairwise_headers)
+            writer.writerows(csv_rows_ttest)
+            writer.writerow([])
+            
+            
+            writer.writerow([title_w])
+            writer.writerow(csv_pairwise_headers)
+            writer.writerows(csv_rows_wilcoxon)
+            writer.writerow([])
+            
+            
+            writer.writerow([title_c])
+            writer.writerow(csv_pairwise_headers)
+            writer.writerows(csv_rows_cond)
             writer.writerow([])
             writer.writerow([])
+            
+            
+            if idx > 0:
+                master_excel_rows.append([""] * len(excel_headers))
+                master_excel_rows.append([""] * len(excel_headers))
+                
+            
+            master_excel_rows.append([title_t] + [""] * (len(excel_headers) - 1))
+            master_excel_rows.append(excel_headers)
+            master_excel_rows.extend(xls_rows_ttest)
+            master_excel_rows.append([""] * len(excel_headers))
+            
+           
+            master_excel_rows.append([title_w] + [""] * (len(excel_headers) - 1))
+            master_excel_rows.append(excel_headers)
+            master_excel_rows.extend(xls_rows_wilcoxon)
+            master_excel_rows.append([""] * len(excel_headers))
+            
+            
+            master_excel_rows.append([title_c] + [""] * (len(excel_headers) - 1))
+            master_excel_rows.append(excel_headers)
+            master_excel_rows.extend(xls_rows_cond)
             
     df_xls = pd.DataFrame(master_excel_rows)
     df_xls.to_excel(out_xlsx, index=False, header=False)
